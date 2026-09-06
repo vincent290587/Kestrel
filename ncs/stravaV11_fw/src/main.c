@@ -29,6 +29,10 @@
 #include <zephyr/drivers/uart.h>
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/sys/printk.h>
+#if defined(CONFIG_FAT_FILESYSTEM_ELM)
+#include <zephyr/fs/fs.h>
+#include <ff.h>
+#endif
 
 #include "ble_demo.h"
 #include "ant_demo.h"
@@ -222,6 +226,95 @@ static void disk_raw_ioctl_demo(const char *name)
 	disk_access_ioctl(name, DISK_IOCTL_CTRL_DEINIT, NULL);
 }
 
+#if defined(CONFIG_FAT_FILESYSTEM_ELM)
+static void sd_fat_demo(void)
+{
+	/* Maps-feasibility step 1 (docs/maps_feasibility.md): confirm
+	 * CONFIG_FAT_FILESYSTEM_ELM actually mounts on the real SD card via
+	 * disk_access, not just raw sectors -- disk_raw_ioctl_demo() above
+	 * only proves the block device works, not a filesystem on top of
+	 * it. CONFIG_FS_FATFS_MOUNT_MKFS defaults to y, so a card with no
+	 * existing FAT filesystem gets formatted automatically on the first
+	 * mount attempt -- correct here since disk_raw_ioctl_demo() already
+	 * overwrites sector 0 (where a FAT boot sector would live) with
+	 * test data every boot, and the user confirmed this card is
+	 * blank/scratch during the FRAM/SD/NOR round-trip validation. */
+	static FATFS fat_fs;
+	static struct fs_mount_t mp = {
+		.type = FS_FATFS,
+		.fs_data = &fat_fs,
+		.mnt_point = "/SD:",
+	};
+
+	int err = fs_mount(&mp);
+
+	printk("sd_fat: fs_mount(\"/SD:\") -> %d\n", err);
+	if (err != 0) {
+		return;
+	}
+
+	/* Zephyr's own fs_sample does this same unmount/remount cycle right
+	 * after a successful mount, before any file I/O -- needed so a
+	 * volume that fs_mount() just auto-mkfs'd (CONFIG_FS_FATFS_MOUNT_MKFS)
+	 * is cleanly re-read from disk rather than continuing to operate on
+	 * whatever in-memory state the mkfs call itself left behind. */
+	fs_unmount(&mp);
+	err = fs_mount(&mp);
+	printk("sd_fat: remount -> %d\n", err);
+	if (err != 0) {
+		return;
+	}
+
+	/* Real round-trip, same rigor as every other storage test in this
+	 * file: write a file, close it, reopen, read back, compare. */
+	static const char test_data[] = "stravaV11 SD FAT test\n";
+	char readback[sizeof(test_data)] = { 0 };
+	struct fs_file_t file;
+
+	fs_file_t_init(&file);
+	err = fs_open(&file, "/SD:/STRAVA11.TXT", FS_O_CREATE | FS_O_WRITE);
+	printk("sd_fat: fs_open(write) -> %d\n", err);
+	if (err == 0) {
+		ssize_t written = fs_write(&file, test_data, sizeof(test_data));
+
+		printk("sd_fat: fs_write() -> %d\n", (int)written);
+		fs_close(&file);
+	}
+
+	fs_file_t_init(&file);
+	err = fs_open(&file, "/SD:/STRAVA11.TXT", FS_O_READ);
+	printk("sd_fat: fs_open(read) -> %d\n", err);
+	if (err == 0) {
+		ssize_t bytes_read = fs_read(&file, readback, sizeof(readback));
+
+		fs_close(&file);
+		printk("sd_fat: fs_read() -> %d, %s\n", (int)bytes_read,
+		       memcmp(test_data, readback, sizeof(test_data)) == 0 ? "MATCH"
+									     : "MISMATCH");
+	}
+
+	struct fs_dir_t dir;
+	struct fs_dirent entry;
+	int count = 0;
+
+	fs_dir_t_init(&dir);
+	err = fs_opendir(&dir, "/SD:");
+	printk("sd_fat: fs_opendir(\"/SD:\") -> %d\n", err);
+	if (err == 0) {
+		while (fs_readdir(&dir, &entry) == 0 && entry.name[0] != '\0') {
+			printk("sd_fat:   %s %s (%zu bytes)\n",
+			       entry.type == FS_DIR_ENTRY_DIR ? "[DIR] " : "[FILE]",
+			       entry.name, entry.size);
+			count++;
+		}
+		fs_closedir(&dir);
+		printk("sd_fat: %d entries in root\n", count);
+	}
+
+	fs_unmount(&mp);
+}
+#endif /* CONFIG_FAT_FILESYSTEM_ELM */
+
 static void qspi_flash_demo(void)
 {
 	/* Real, populated hardware: erase/write/read/verify directly against
@@ -363,6 +456,10 @@ static void storage_demo(void)
 	/* SD card: no card/slot on this DK (see the overlay) -- this just
 	 * proves the driver reports a clean error instead of hanging. */
 	disk_raw_ioctl_demo("SD");
+
+#if defined(CONFIG_FAT_FILESYSTEM_ELM)
+	sd_fat_demo();
+#endif
 
 	qspi_flash_demo();
 

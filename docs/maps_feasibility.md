@@ -122,11 +122,17 @@ the concrete reason SD (not QSPI) has to be the map store.
 
 ## Real risks and open questions
 
-1. **SD FAT filesystem is unproven.** This is the first real blocker to
-   resolve — likely easy (the QSPI PM issue doesn't obviously apply to a
-   real `disk_access` block device), but "likely" isn't "confirmed," and
-   everything else depends on it (or on a much less pleasant
-   raw-sector-offset scheme instead of files).
+1. ~~**SD FAT filesystem is unproven.**~~ **Resolved 2026-09-06, validated
+   on real hardware.** `CONFIG_FAT_FILESYSTEM_ELM` mounts cleanly on the
+   real SD card (`fs_mount("/SD:") -> 0`), and a real file create/write/
+   read/verify round trip succeeds (`stravaV11_fw/src/main.c`'s
+   `sd_fat_demo()`, see `CLAUDE.md`). One real gotcha hit along the way,
+   worth remembering for the actual map-tile file layout: filenames must
+   be 8.3-format unless `CONFIG_FS_FATFS_LFN` is enabled (a name like
+   `stravav11_test.txt` fails `fs_open()` with `-ENOENT`, not an
+   obviously-named length error) — so either keep on-device tile
+   filenames within 8.3 (e.g. hex-encoded tile coordinates), or enable
+   LFN when the time comes.
 2. **RAM is the tightest constraint**, and it's shared with ANT+/BLE/
    display/everything else already running concurrently — the tile cache
    size has to be sized empirically against real peak usage, not assumed.
@@ -147,8 +153,8 @@ the concrete reason SD (not QSPI) has to be the map store.
 
 ## Suggested phased plan
 
-1. Validate `CONFIG_FAT_FILESYSTEM_ELM` actually mounts on the SD card
-   (cheap, resolves risk #1 fast).
+1. ~~Validate `CONFIG_FAT_FILESYSTEM_ELM` actually mounts on the SD
+   card.~~ **Done** — see risk #1 above.
 2. Build the offline OSM-to-binary-tile conversion tool (host-side
    Python, same lineage as `gpx_to_c.py`), test against a small real
    extract of the riding area.
