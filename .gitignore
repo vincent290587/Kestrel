@@ -6,11 +6,14 @@
 /.venv/
 
 # ncs/ is the west workspace: everything in it except our own applications
-# (stravaV11_app, stravaV11_fw) is third-party (Zephyr, sdk-nrf, mcuboot,
-# ...), each already its own git checkout managed by `west update`.
+# (stravaV11_app, stravaV11_fw, stravaV11_ant) is third-party (Zephyr,
+# sdk-nrf, mcuboot, ...), each already its own git checkout managed by
+# `west update`. ncs/ant/ is additionally license-gated, proprietary vendor
+# source (ANT+ Adopter agreement) -- never track it here regardless.
 /ncs/*
 !/ncs/stravaV11_app/
 !/ncs/stravaV11_fw/
+!/ncs/stravaV11_ant/
 
 # Claude Code session state, not project content.
 /.claude/
