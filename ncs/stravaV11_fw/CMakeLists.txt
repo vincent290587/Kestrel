@@ -32,6 +32,8 @@ target_sources(app PRIVATE
   src/task_demo.c
   src/power_demo.c
   src/poll_demo.c
+  src/usbd_init.c
+  src/usb_demo.c
   lib/bt_cp_client.c
   lib/libraries/AdafruitGFX/Adafruit_GFX.cpp
   lib/libraries/AdafruitGFX/Print.cpp

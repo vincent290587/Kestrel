@@ -19,6 +19,21 @@
 	};
 };
 
+/*
+ * Phase 9: USB CDC-ACM. Unlike everything else in this file, &zephyr_udc0
+ * is the chip's own on-die USB peripheral (already enabled by the DK's
+ * default devicetree) -- real hardware, not a placeholder. Whether it's
+ * actually host-visible depends on a physical USB cable being plugged into
+ * the DK's own USB connector (separate from the J-Link USB used for
+ * flashing/console), which is outside what this session could do itself.
+ */
+&zephyr_udc0 {
+	cdc_acm_uart0: cdc_acm_uart0 {
+		compatible = "zephyr,cdc-acm-uart";
+		label = "stravaV11 CDC-ACM";
+	};
+};
+
 &arduino_spi {
 	status = "okay";
 	/* index 0 -> ls027 (D10), index 1 -> SD card (D9), both placeholder
