@@ -33,6 +33,7 @@
 #include <zephyr/drivers/display.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
+#include <zephyr/sys/time_units.h>
 
 #include "ZephyrGFX.h"
 #include "Org_01.h"
@@ -183,10 +184,18 @@ uint32_t gfx_demo_show_map(const uint8_t *tile_buf, size_t tile_len, float cente
 	}
 
 	gfx.fillScreen(1);
+
+	uint32_t render_start = k_cycle_get_32();
 	uint32_t points_drawn = map_render_tile(gfx, tile_buf, tile_len, center_lat, center_lon);
+	uint32_t render_us = k_cyc_to_us_floor32(k_cycle_get_32() - render_start);
+
+	uint32_t push_start = k_cycle_get_32();
 
 	gfx_push();
-	printk("gfx_demo: map render, %u points drawn\n", points_drawn);
+	uint32_t push_us = k_cyc_to_us_floor32(k_cycle_get_32() - push_start);
+
+	printk("gfx_demo: map render, %u points drawn, render=%u us push=%u us total=%u us\n",
+	       points_drawn, render_us, push_us, render_us + push_us);
 	return points_drawn;
 #else
 	ARG_UNUSED(tile_buf);

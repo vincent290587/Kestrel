@@ -302,15 +302,26 @@ plumbing.
    been "carry the logic, replace the plumbing." (See the library survey
    below for whether any of this can be reused rather than written from
    scratch.)
-4. **LS027 SPI throughput for panning smoothness** hasn't been profiled —
-   full-frame `display_write()` calls complete in the existing demos, but
-   redraw latency under a denser vector scene (hundreds of line segments)
-   at pan/zoom-interaction speed (vs. GPS-1Hz-driven redraw) is
-   unmeasured.
+4. ~~**LS027 SPI throughput for panning smoothness** hasn't been
+   profiled.~~ **Resolved 2026-09-06, measured on real hardware.** A real
+   ~745-polyline tile (1570 points): ~127-129ms render + ~79.5ms SPI push
+   = ~207ms total; a smaller real tile (1087 points): ~91ms render +
+   ~79ms push = ~170ms. Push time is roughly constant (a fixed-size full
+   frame transfer); render time scales with point count. Comfortably
+   within the current 1000ms (1Hz, GPS-update-rate) redraw budget —
+   interactive pan/zoom at a faster refresh rate would need re-checking
+   against this same data, but the current design has real headroom.
 5. **No design work yet for how zoom/pan is actually triggered** — buttons
    exist on the real board (P0.14/P0.13/P0.11) but no input-handling code
    has been ported (`button.h`/`Notif.h` are explicitly still un-ported
    per Phase 7).
+6. **A genuine power-on reset was observed** a few minutes into the
+   SD-card-backed version of live map redraws (concurrent with the full
+   subsystem set) — see "Map rendering" below for the diagnosis
+   (`POWER.RESETREAS`-confirmed, not a software crash) and mitigation (a
+   self-healing power latch). Not conclusively isolated to SD-card I/O
+   specifically vs. the full concurrent load in general — re-integrating
+   the SD-card path needs this re-checked, not assumed fixed.
 
 ## Suggested phased plan
 
@@ -330,10 +341,15 @@ plumbing.
    `MAP_RENDER_ZOOM_LEVEL`), not interactive — the user's explicit choice,
    since no button/pan/zoom input handling exists yet (`button.h`/
    `Notif.h` are still un-ported, per Phase 7).
-5. Hardware bring-up on the real board: real map data (an actual OSM
+5. Hardware bring-up on the real board: ~~real map data (an actual OSM
    extract of a riding area, not the synthetic test tile), real
-   GPS-driven panning/re-centering, buttons for interactive zoom (new
-   input-handling work).
+   GPS-driven panning/re-centering~~ **done and confirmed on the physical
+   panel** — see "Map rendering" below ("I could recognize streets").
+   Still open: re-integrating this with SD-card-backed tile storage
+   (current validation embeds tiles directly in flash, which doesn't
+   scale to a real riding area's worth of map data) and resolving the
+   power-on-reset question that surfaced along the way; buttons for
+   interactive zoom (new input-handling work, not started).
 
 ## Map rendering
 
@@ -350,10 +366,14 @@ itself (`setZoomLevel()`, since the class previously only exposed
 `increaseZoom()`/`decreaseZoom()`/`resetZoom()`, no way to jump straight
 to an arbitrary level). Longitude maps directly to screen x; latitude
 maps to screen y inverted (north is "up", but pixel y increases
-downward). Deliberately does no manual clipping — `Adafruit_GFX`'s own
-`drawLine()`/`writePixel()` already bounds-check against the canvas, so
-points outside the current view are simply not drawn, not a
-size/overflow risk.
+downward). **Update**: originally relied solely on `Adafruit_GFX`'s own
+bounds-checked `drawLine()`/`writePixel()` and did no clamping of its
+own — real map data broke that assumption (see below): projected
+coordinates now get clamped to a generous margin before the
+`float`→`int16_t` cast (undefined behavior otherwise for an extreme
+value), plus a Cohen-Sutherland-style trivial-reject test skips segments
+whose endpoints share an out-of-bounds side, bounding the work done for
+a tile whose content mostly falls outside the current view.
 
 **Validated on `native_sim`** (`stravaV11_app`'s smoke test, same real
 tool-generated `tile_2_2.bin` fixture as the parser tests): renders onto
@@ -387,6 +407,81 @@ anywhere else in the same boot. Not yet independently confirmed by the
 user looking at the physical panel — the log/pixel-count evidence is
 solid, but (per this port's own established standard for display
 features) only eyes on real glass fully closes that loop.
+
+**Update — real OSM map data rendered and confirmed on the physical
+panel: "I could recognize streets."** First time this port has shown
+anything but a synthetic test pattern on real glass. Getting here needed
+a real OSM extract (`curl` against the public Overpass API for the bbox
+covering `gps_sim_route.h`'s actual Rotterdam ride — 2889 real ways
+seen, 1265 kept, converted via `osm_to_tiles.py` into 2 tiles,
+`tile_2596_223.bin`/`tile_2596_224.bin`, confirming the route really
+does cross a tile boundary as predicted from its known lat/lon span),
+embedded via a new kept tool `tools/tile_to_c.py` (generalizes the
+`test_tile_data.h` pattern — a directory of tile files to a C array +
+`struct embedded_tile { name, data, len }` lookup table — into
+`lib/source/maps/real_route_tiles.h`) — and, the actual blocker, root
+causing why the live map screen never rendered at all despite building
+and running cleanly.
+
+**Root cause: `Locator::getPosition()` is a single-consumer read.** It
+calls `gps_loc.clearIsUpdated()` as a side effect. `gps_sim_demo.c`'s own
+`replay_work_handler()` calls `gps_demo_inject_location()` then
+immediately `gps_demo_report()` (which calls `getPosition()`) back to
+back in the same function, winning the race against any other,
+independently-scheduled poller essentially every time.
+`gps_demo_get_position()`/`gps_demo_get_altitude()` both also called
+`getPosition()`, and so never once saw a fix, despite real fixes flowing
+continuously the whole time — confirmed by direct contradiction in one
+capture's raw log: `Locator update source: 3` (a real fix, consumed by
+`gps_demo_report()`) appearing constantly, right alongside
+`map_screen: no GPS fix yet` on every single cycle. **Fixed by reading
+`gps_loc.data` directly** (a public `Sensor<T>` member) instead of going
+through `getPosition()`, using `getAge()` (also side-effect-free) for
+staleness (`< 5000ms`) instead of `isUpdated()`, which would just latch
+permanently true after the first-ever fix. This is a real,
+generally-applicable bug fix, not maps-specific — any future code
+reading Locator's position from more than one place would hit it too.
+
+**A second, separate issue surfaced while isolating this**: a genuine
+power-on reset (`POWER.RESETREAS` read `0x00000000` — no warm-reset-
+reason bits set — immediately after the reboot, ruling out a software
+crash) a few minutes into the SD-card-backed version of this test (real
+`fs_write()`/`fs_open()`/`fs_read()` every redraw cycle, concurrent with
+QSPI/ANT+/BLE/display all at once; confirmed on stable USB power, ruling
+out battery drain). Mitigated with a self-healing power latch
+(`stc3100_power_latch_hold()` was previously only ever called once, at
+boot — now also re-asserted every 5 seconds) — a defensive mitigation,
+not a root-caused fix for a specific disturbance mechanism.
+
+**Isolated methodically**: rewrote `map_screen_demo.c` to render
+directly from `real_route_tiles.h` with no SD card or filesystem
+involved at all, and stripped `main()` down to only what
+`map_screen_demo`/`gps_sim_demo` need, cleanly separating "does rendering
+work at all" from "does the board lose power" as two previously-
+conflated questions.
+
+**Fully validated on real hardware, 5-minute continuous run, zero
+crashes**: 146 successful renders, both real tiles rendered correctly as
+the simulated ride crossed the tile boundary mid-route
+(`tile_2596_223.bin`, 1570 points, ~127-129ms render + ~79.5ms push =
+~207ms/redraw; then `tile_2596_224.bin`, 1087 points, ~91ms render +
+~79ms push = ~170ms/redraw — push time roughly constant, matching a
+fixed-size SPI frame transfer; render time scales with point count),
+comfortably within the 1000ms redraw budget. Zero crashes across the
+whole run — longer than either prior crash (~2:36 and ~4:55 with the
+SD-card version), pointing at SD-card usage (not the render/Zoom/
+Bresenham path, now cleared) as the power-loss trigger, though not yet
+conclusively isolated from "everything else running concurrently" as the
+two were changed together.
+
+**Not yet done**: re-integrating SD-card-backed tile loading (needed for
+real-world map coverage beyond what fits in flash) now that the
+render-side bug is fixed, and separately isolating whether SD-card I/O
+specifically (vs. the full concurrent subsystem load) causes the power
+loss; restoring the rest of `main()`'s subsystems now that this
+narrowed-down test is confirmed working; addressing risk #4 below now
+that real timing numbers exist (they answer it: rendering a real,
+detailed tile is well within the 1Hz redraw budget).
 
 ## On-device library survey
 

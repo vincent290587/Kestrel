@@ -42,6 +42,7 @@
 #include "gps_demo.h"
 #include "gps_sim_demo.h"
 #include "map_demo.h"
+#include "map_screen_demo.h"
 #include "Locator.h"
 #include "sensor_screen_demo.h"
 #include "task_demo.h"
@@ -96,6 +97,33 @@ static void stc3100_power_latch_hold(void)
 	i2c_write(i2c, mode_cmd, sizeof(mode_cmd), STC3100_I2C_ADDR);
 
 	printk("stc3100: power latch held (CONTROL reset, MODE run)\n");
+}
+
+/* Diagnostic finding (maps-feasibility real-tile/GPS-sim validation): the
+ * board genuinely lost power a few minutes into the heaviest sustained
+ * combined workload this project has ever run (real SD-card tile reads
+ * every second, concurrent with QSPI/ANT+/BLE/display, all while on
+ * stable USB power -- ruling out battery drain). Confirmed via
+ * POWER.RESETREAS reading 0 (no warm-reset-reason bits set) immediately
+ * after the reboot -- the signature of a genuine power-on reset, not a
+ * software crash. stc3100_power_latch_hold() above was, until now, only
+ * ever called once, as the very first line of main() -- if the STC3100
+ * itself gets disturbed by anything afterward (never actually confirmed
+ * what; this is a mitigation, not a root-caused fix), nothing was ever
+ * re-asserting the latch, since the original one-shot call already
+ * fully accounted for the case explored back then (nothing ever talking
+ * to the STC3100 across a whole boot). Re-asserting periodically makes
+ * the latch self-healing against a disturbance partway through a run,
+ * whatever its cause. */
+static void stc3100_power_latch_refresh_handler(struct k_work *work);
+static K_WORK_DELAYABLE_DEFINE(stc3100_power_latch_refresh_work,
+				stc3100_power_latch_refresh_handler);
+
+static void stc3100_power_latch_refresh_handler(struct k_work *work)
+{
+	ARG_UNUSED(work);
+	stc3100_power_latch_hold();
+	k_work_schedule(&stc3100_power_latch_refresh_work, K_SECONDS(5));
 }
 
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
@@ -630,9 +658,23 @@ static void display_demo(void)
 int main(void)
 {
 	stc3100_power_latch_hold();
+	k_work_schedule(&stc3100_power_latch_refresh_work, K_SECONDS(5));
 
 	printk("=== stravaV11 Phase 2/3 DK bring-up ===\n");
 
+	/* Methodical isolation for the map-render/power investigation
+	 * (docs/maps_feasibility.md): everything below is temporarily
+	 * disabled except what map_screen_demo_start()/gps_sim_demo_start()
+	 * actually need, to rule out interference/current draw from unrelated
+	 * subsystems. Found and fixed the render issue (a real bug in
+	 * gps_demo_get_position()/get_altitude(), unrelated to any of this --
+	 * see gps_demo.cpp) and confirmed a clean 5-minute run with zero
+	 * power loss in this reduced configuration -- but that doesn't yet
+	 * prove the full subsystem set is safe together with SD-card-backed
+	 * tile loading (the configuration that originally lost power via a
+	 * genuine POWER.RESETREAS==0 power-on reset). Restore once that's
+	 * re-checked -- nothing below was changed, only left uncalled. */
+#if 0
 	led_button_demo();
 	i2c_demo();
 	sensor_demo("bme280", DEVICE_DT_GET(DT_NODELABEL(bme280)));
@@ -645,18 +687,19 @@ int main(void)
 	ant_demo_start();
 	hrm_demo_start();
 	bsc_demo_start();
-	/* Last one-shot draw before sensor_screen_demo_start()'s periodic
-	 * LIVE DATA redraws take over the display for good -- same brief
-	 * visible window gfx_demo()'s own static message gets, rather than
-	 * being immediately overwritten by display_demo()/gfx_demo() if
-	 * called earlier (both also draw to the same physical screen). */
-	map_demo();
-	sensor_screen_demo_start();
 	ble_demo_start();
 	task_demo_start();
 	power_demo_start();
 	poll_demo_start();
 	usb_demo_start();
+#endif
+
+	/* Normally done inside uart_demo() (disabled above) -- called
+	 * directly here since gps_sim_demo/map_screen_demo need Locator
+	 * initialized regardless of the real GPS UART path. */
+	gps_demo_init();
+
+	map_screen_demo_start();
 	gps_sim_demo_start();
 
 	printk("=== bring-up smoke test done ===\n");

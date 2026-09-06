@@ -50,17 +50,44 @@ void gps_demo_inject_location(float lat, float lon, float alt, float speed, floa
 	s_locator.gps_loc = data;
 }
 
+/* Locator::getPosition() is a single-consumer read: it calls
+ * gps_loc.clearIsUpdated() as a side effect (Locator.cpp), so whichever
+ * caller happens to poll first after a fresh injection "consumes" that
+ * fix and every other caller sees eLocationSourceNone until the next
+ * injection. gps_sim_demo.c's own replay_work_handler() calls
+ * gps_demo_inject_location() then immediately gps_demo_report() (which
+ * calls getPosition()) in the same function, back to back -- meaning it
+ * wins that race against any other, independently-scheduled poller
+ * essentially every time. Found this the hard way: gps_demo_get_position()
+ * originally also called getPosition() and, despite real fixes flowing
+ * continuously (confirmed via gps_demo_report()'s own successful output),
+ * never once saw one.
+ *
+ * Fixed by reading gps_loc.data directly (a public member, see Sensor.h)
+ * instead of going through getPosition() -- no consuming side effect --
+ * and using getAge() (also side-effect-free) for staleness instead of
+ * isUpdated(), which read-only would just latch true forever after the
+ * first-ever fix and never reflect whether updates are still arriving. */
+#define GPS_FIX_STALE_MS 5000 /* several times gps_sim/real GPS's ~1Hz update rate */
+
 bool gps_demo_get_altitude(float *alt_m)
 {
-	SLoc loc = {};
-	SDate date = {};
-	eLocationSource src = s_locator.getPosition(loc, date);
-
-	if (src != eLocationSourceGPS) {
+	if (s_locator.gps_loc.getAge() >= GPS_FIX_STALE_MS) {
 		return false;
 	}
 
-	*alt_m = loc.alt;
+	*alt_m = s_locator.gps_loc.data.alt;
+	return true;
+}
+
+bool gps_demo_get_position(float *lat, float *lon)
+{
+	if (s_locator.gps_loc.getAge() >= GPS_FIX_STALE_MS) {
+		return false;
+	}
+
+	*lat = s_locator.gps_loc.data.lat;
+	*lon = s_locator.gps_loc.data.lon;
 	return true;
 }
 

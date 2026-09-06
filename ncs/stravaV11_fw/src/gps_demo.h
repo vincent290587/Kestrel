@@ -32,6 +32,11 @@ void gps_demo_inject_location(float lat, float lon, float alt, float speed, floa
  * hrm_demo_is_paired()/bsc_demo_is_paired(). */
 bool gps_demo_get_altitude(float *alt_m);
 
+/* Latest GPS-fix lat/lon in degrees, for map_screen_demo.c's live-position
+ * map centering. Same "false + untouched when no fix" convention as
+ * gps_demo_get_altitude(). */
+bool gps_demo_get_position(float *lat, float *lon);
+
 #ifdef __cplusplus
 }
 #endif
