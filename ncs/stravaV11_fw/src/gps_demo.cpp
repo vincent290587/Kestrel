@@ -19,6 +19,7 @@
 
 #include <math.h>
 
+#include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
 #include "Locator.h"
@@ -28,6 +29,25 @@ static Locator s_locator;
 void gps_demo_init(void)
 {
 	s_locator.init();
+}
+
+void gps_demo_inject_location(float lat, float lon, float alt, float speed, float course,
+			       uint32_t utc_time, uint32_t date)
+{
+	sLocationData data = {};
+
+	data.lat = lat;
+	data.lon = lon;
+	data.alt = alt;
+	data.speed = speed;
+	data.course = course;
+	data.utc_time = utc_time;
+	data.utc_timestamp = (uint32_t)k_uptime_get();
+	data.date = date;
+
+	/* Sensor<T>::operator= does the memcpy + setIsUpdated() -- same as a
+	 * real fix flowing through Locator::tasks() would. */
+	s_locator.gps_loc = data;
 }
 
 void gps_demo_report(void)

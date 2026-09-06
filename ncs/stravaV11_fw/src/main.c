@@ -33,6 +33,7 @@
 #include "bsc_demo.h"
 #include "gfx_demo.h"
 #include "gps_demo.h"
+#include "gps_sim_demo.h"
 #include "Locator.h"
 #include "sensor_screen_demo.h"
 #include "task_demo.h"
@@ -451,6 +452,7 @@ int main(void)
 	power_demo_start();
 	poll_demo_start();
 	usb_demo_start();
+	gps_sim_demo_start();
 
 	printk("=== bring-up smoke test done ===\n");
 	return 0;
