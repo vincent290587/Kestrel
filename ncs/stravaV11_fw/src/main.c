@@ -1,14 +1,15 @@
 /*
- * Phase 2 DK bring-up smoke test.
+ * Phase 2/3 DK bring-up smoke test.
  *
- * Two things are validated here, and they're validated differently:
- *  - LED + button: this DK has both on-board, so this is real, observed
- *    hardware behavior.
- *  - LS027 display: nothing is wired up to this DK (see CLAUDE.md and the
- *    board overlay), so this only proves the sharp,ls0xx driver + display
- *    subsystem initialize and accept writes without error -- not that any
- *    particular pixel pattern reaches real glass. That check comes once
- *    the display is actually wired up (custom PCB phase).
+ * Validated two different ways:
+ *  - LED, button, I2C bus scan: this DK has the first two on-board and
+ *    nothing needs to ACK on the bus for the third, so these are real,
+ *    observed hardware results.
+ *  - LS027 display, bme280, fxos8700, FRAM (mb85rcxx): nothing is wired up
+ *    to this DK (see CLAUDE.md and the board overlay), so these only prove
+ *    each driver initializes and completes its transactions without
+ *    error/hang -- not that any particular reading or pixel is correct.
+ *    That check comes once real hardware is wired up (custom PCB phase).
  */
 
 #include <string.h>
@@ -18,6 +19,8 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/i2c.h>
+#include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/eeprom.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/sys/printk.h>
 
@@ -77,6 +80,33 @@ static void i2c_demo(void)
 	       nacks, acks);
 }
 
+static void sensor_demo(const char *name, const struct device *dev)
+{
+	if (!device_is_ready(dev)) {
+		printk("%s: not ready (expected -- nothing attached)\n", name);
+		return;
+	}
+
+	int err = sensor_sample_fetch(dev);
+	printk("%s: ready, sensor_sample_fetch() -> %d\n", name, err);
+}
+
+static void fram_demo(void)
+{
+	const struct device *fram = DEVICE_DT_GET(DT_NODELABEL(fram));
+
+	if (!device_is_ready(fram)) {
+		printk("fram: not ready (expected -- nothing attached)\n");
+		return;
+	}
+
+	printk("fram: ready, size=%zu bytes\n", eeprom_get_size(fram));
+
+	uint8_t pattern[4] = { 0xDE, 0xAD, 0xBE, 0xEF };
+	int err = eeprom_write(fram, 0, pattern, sizeof(pattern));
+	printk("eeprom_write() -> %d\n", err);
+}
+
 #if DT_HAS_CHOSEN(zephyr_display)
 static void display_demo(void)
 {
@@ -116,10 +146,13 @@ static void display_demo(void)
 
 int main(void)
 {
-	printk("=== stravaV11 Phase 2 DK bring-up ===\n");
+	printk("=== stravaV11 Phase 2/3 DK bring-up ===\n");
 
 	led_button_demo();
 	i2c_demo();
+	sensor_demo("bme280", DEVICE_DT_GET(DT_NODELABEL(bme280)));
+	sensor_demo("fxos8700", DEVICE_DT_GET(DT_NODELABEL(fxos8700)));
+	fram_demo();
 	display_demo();
 
 	printk("=== bring-up smoke test done ===\n");

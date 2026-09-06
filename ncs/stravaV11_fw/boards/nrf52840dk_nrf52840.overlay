@@ -33,3 +33,38 @@
 		serial-vcom-interval = <1000>;
 	};
 };
+
+/*
+ * Phase 3 sensor bring-up, same caveat as above: nothing is physically
+ * attached to this DK, so these addresses/wiring are placeholders (matching
+ * stravaV10's actual addresses, which is all that matters for now) purely so
+ * each driver builds and its init path runs cleanly against a real I2C
+ * controller. arduino_i2c (i2c0) is already enabled by the DK's own default
+ * devicetree -- see stravaV11_fw/prj.conf and CLAUDE.md.
+ */
+&arduino_i2c {
+	bme280: bme280@76 {
+		/* Active barometer per stravaV10's parameters.h (BARO_TYPE
+		 * bme280); same 0x76 address as ms5637.c uses -- the two are
+		 * alternate BOM options, never populated together. */
+		compatible = "bosch,bme280";
+		reg = <0x76>;
+	};
+
+	fxos8700: fxos8700@1e {
+		compatible = "nxp,fxos8700";
+		reg = <0x1e>;
+	};
+
+	fram: mb85rc@50 {
+		/* Matches stravaV10's source/sensors/fram.c addressing
+		 * exactly: base address 0x50 with the top address bits
+		 * folded into the low bits of the 7-bit I2C address --
+		 * that's what address-width = 8 (bits) + size = 2048
+		 * (2^11 addressable bytes) reproduces in this driver. */
+		compatible = "fujitsu,mb85rcxx";
+		reg = <0x50>;
+		size = <2048>;
+		address-width = <8>;
+	};
+};
