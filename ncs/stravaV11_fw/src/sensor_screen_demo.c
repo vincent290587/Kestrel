@@ -6,10 +6,13 @@
  * one-shot hardware proof like the other phase demos.
  */
 
+#include <stdbool.h>
+
 #include <zephyr/kernel.h>
 
 #include "hrm_demo.h"
 #include "bsc_demo.h"
+#include "gps_demo.h"
 #include "gfx_demo.h"
 
 #include "sensor_screen_demo.h"
@@ -24,8 +27,12 @@ static void sensor_screen_work_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
 
+	float alt_m = 0.f;
+	bool has_alt = gps_demo_get_altitude(&alt_m);
+
 	gfx_demo_show_sensors(hrm_demo_get_bpm(), hrm_demo_get_rr_ms(), hrm_demo_is_paired(),
-			      bsc_demo_get_speed(), bsc_demo_get_cadence(), bsc_demo_is_paired());
+			      bsc_demo_get_speed(), bsc_demo_get_cadence(), bsc_demo_is_paired(),
+			      alt_m, has_alt);
 
 	k_work_schedule(&sensor_screen_work, K_MSEC(SENSOR_SCREEN_REFRESH_MS));
 }

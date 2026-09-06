@@ -50,6 +50,20 @@ void gps_demo_inject_location(float lat, float lon, float alt, float speed, floa
 	s_locator.gps_loc = data;
 }
 
+bool gps_demo_get_altitude(float *alt_m)
+{
+	SLoc loc = {};
+	SDate date = {};
+	eLocationSource src = s_locator.getPosition(loc, date);
+
+	if (src != eLocationSourceGPS) {
+		return false;
+	}
+
+	*alt_m = loc.alt;
+	return true;
+}
+
 void gps_demo_report(void)
 {
 	SLoc loc = {};
