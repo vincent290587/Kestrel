@@ -20,11 +20,13 @@
  * flagged as unverifiable without real glass attached; still true here,
  * for the same reason.
  *
- * Unlike stravaV10's Vue::drawPixel(), this does NOT apply any rotation
- * transform (stravaV10 hardcodes rotation=3 for its physical case mounting
- * -- Adafruit_GFX's own setRotation() is available if/when that's needed,
- * but getting it right needs the real screen to check against, so it's
- * left at the class's natural orientation for now).
+ * Rotation: drawPixel() applies Adafruit_GFX's standard per-driver rotation
+ * transform (WIDTH/HEIGHT are the raw physical 400x240 panel dims; _width/
+ * _height are the current rotation-adjusted logical ones set by
+ * setRotation()). stravaV10 hardcodes rotation=3 for its physical case
+ * mounting; confirmed against the real board that this board's application
+ * wants portrait too, so callers should setRotation(1) or (3) as
+ * appropriate rather than relying on the class's native landscape 400x240.
  */
 
 #ifndef SOURCE_VUE_ZEPHYRGFX_H_

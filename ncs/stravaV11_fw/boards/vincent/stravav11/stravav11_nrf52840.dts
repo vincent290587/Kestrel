@@ -148,11 +148,18 @@ arduino_i2c: &i2c0 {
 	};
 };
 
-/* LS027 display, LS027_CS_PIN as a plain GPIO chip-select. */
+/* LS027 display, LS027_CS_PIN as a plain GPIO chip-select. Active HIGH,
+ * not the more common active-low convention -- zephyr/drivers/display/
+ * ls0xx.c hardcodes SPI_CS_ACTIVE_HIGH in its own spi_config, and the
+ * DK overlay's own arduino_spi cs-gpios (Phase 2) already got this right;
+ * this board's version had it backwards (GPIO_ACTIVE_LOW), corrupting
+ * every SPI transaction to the display -- found via real-glass output
+ * that looked like noise, not the intended shapes, on the very first
+ * physical LS027 this port has ever been visually checked against. */
 &spi2 {
 	compatible = "nordic,nrf-spi";
 	status = "okay";
-	cs-gpios = <&gpio0 17 GPIO_ACTIVE_LOW>;
+	cs-gpios = <&gpio0 17 GPIO_ACTIVE_HIGH>;
 	pinctrl-0 = <&spi2_default>;
 	pinctrl-1 = <&spi2_sleep>;
 	pinctrl-names = "default", "sleep";
