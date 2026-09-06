@@ -32,6 +32,8 @@
 #include "hrm_demo.h"
 #include "bsc_demo.h"
 #include "gfx_demo.h"
+#include "gps_demo.h"
+#include "Locator.h"
 #include "task_demo.h"
 #include "power_demo.h"
 #include "poll_demo.h"
@@ -266,8 +268,12 @@ static void uart_demo(void)
 	 * On the DK, no GPS module is attached -- this only proves TX
 	 * completes and RX doesn't hang, not that anything is received. On
 	 * the real PCB (Phase 11), gps_pins_release() below takes the module
-	 * out of reset/standby first, so RX bytes here are real. */
+	 * out of reset/standby first, so RX bytes here are real. Every
+	 * received byte is also fed through locator_encode_char() (Phase 6's
+	 * TinyGPS++-based Locator, ported unmodified from stravaV11_app) --
+	 * see gps_demo_report() below for what it decoded. */
 	gps_pins_release();
+	gps_demo_init();
 
 	const struct device *uart = DEVICE_DT_GET(DT_NODELABEL(arduino_serial));
 
@@ -298,6 +304,7 @@ static void uart_demo(void)
 
 		if (uart_poll_in(uart, &rx) == 0) {
 			rx_buf[rx_count++] = rx;
+			locator_encode_char((char)rx);
 		} else {
 			/* Only sleep when idle, not while bytes are actively
 			 * arriving: a tight 2s CPU-bound spin here starved the
@@ -329,9 +336,11 @@ static void uart_demo(void)
 
 	printk("arduino_serial: RX got %d bytes over 2s: \"%s\"\n", rx_count, dump);
 
-	/* Give the deferred-log thread a moment to actually drain that line
-	 * before ant_demo_start() immediately queues a burst of its own --
-	 * without this, this specific message was the one getting dropped. */
+	gps_demo_report();
+
+	/* Give the deferred-log thread a moment to actually drain those two
+	 * lines before ant_demo_start() immediately queues a burst of its
+	 * own -- without this, one of them was the one getting dropped. */
 	k_msleep(5);
 }
 

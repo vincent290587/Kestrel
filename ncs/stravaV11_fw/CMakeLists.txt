@@ -52,7 +52,12 @@ target_include_directories(app PRIVATE
   lib/libraries/AdafruitGFX
   lib/libraries/AdafruitGFX/Fonts
   lib/libraries/utils
+  lib/libraries/TinyGPSPlus
+  lib/source
+  lib/source/model
+  lib/source/sensors
   lib/source/vue
+  adapters
 )
 
 target_sources(app PRIVATE
@@ -62,6 +67,7 @@ target_sources(app PRIVATE
   src/hrm_demo.c
   src/bsc_demo.c
   src/gfx_demo.cpp
+  src/gps_demo.cpp
   src/task_demo.c
   src/power_demo.c
   src/poll_demo.c
@@ -71,5 +77,10 @@ target_sources(app PRIVATE
   lib/libraries/AdafruitGFX/Adafruit_GFX.cpp
   lib/libraries/AdafruitGFX/Print.cpp
   lib/libraries/utils/WString.cpp
+  lib/libraries/utils/utils.c
+  lib/libraries/TinyGPSPlus/TinyGPS++.cpp
+  lib/source/model/Locator.cpp
   lib/source/vue/ZephyrGFX.cpp
+  adapters/gps_mgmt_stub.cpp
+  adapters/millis_zephyr.c
 )
