@@ -68,6 +68,7 @@ target_sources(app PRIVATE
   src/bsc_demo.c
   src/gfx_demo.cpp
   src/gps_demo.cpp
+  src/sensor_screen_demo.c
   src/task_demo.c
   src/power_demo.c
   src/poll_demo.c

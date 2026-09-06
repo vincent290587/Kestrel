@@ -34,6 +34,7 @@
 #include "gfx_demo.h"
 #include "gps_demo.h"
 #include "Locator.h"
+#include "sensor_screen_demo.h"
 #include "task_demo.h"
 #include "power_demo.h"
 #include "poll_demo.h"
@@ -399,6 +400,7 @@ int main(void)
 	ant_demo_start();
 	hrm_demo_start();
 	bsc_demo_start();
+	sensor_screen_demo_start();
 	ble_demo_start();
 	task_demo_start();
 	power_demo_start();

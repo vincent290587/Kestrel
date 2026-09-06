@@ -271,3 +271,18 @@ int bsc_demo_start(void)
 
 	return 0;
 }
+
+uint32_t bsc_demo_get_speed(void)
+{
+	return m_speed;
+}
+
+uint32_t bsc_demo_get_cadence(void)
+{
+	return m_cadence;
+}
+
+bool bsc_demo_is_paired(void)
+{
+	return m_paired != 0;
+}

@@ -165,3 +165,18 @@ int hrm_demo_start(void)
 
 	return 0;
 }
+
+uint8_t hrm_demo_get_bpm(void)
+{
+	return m_bpm;
+}
+
+uint16_t hrm_demo_get_rr_ms(void)
+{
+	return m_rr_ms;
+}
+
+bool hrm_demo_is_paired(void)
+{
+	return m_paired != 0;
+}
