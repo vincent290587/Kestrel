@@ -37,6 +37,55 @@
 #include "poll_demo.h"
 #include "usb_demo.h"
 
+/*
+ * The custom PCB latches its own regulator ON via the STC3100 fuel gauge's
+ * IO0 pin: source/sensors/STC3100.cpp's reset()/init() sequence (REG_CONTROL
+ * = STC_RESET, then REG_MODE = MODE_RUN) leaves IO0 actively driven, holding
+ * the latch; shutdown() (REG_MODE = 0, then REG_CONTROL = STC_IO_OD) releases
+ * it to open-drain so the board can power itself off -- see
+ * power_scheduler.cpp's real stc.shutdown() call and CLAUDE.md's Phase 8
+ * notes on that mechanism. No Zephyr driver for the STC3100 exists yet
+ * (Phase 3 gap), so until one does, this replicates only stravaV10's own
+ * init() register writes -- just enough to hold power, not the full
+ * fuel-gauge driver. Found the hard way: the board powered itself off
+ * between Phase 11 test runs before this existed, since nothing was ever
+ * talking to the STC3100 at all, and its post-reset default apparently
+ * doesn't hold the latch on its own. Runs first, before anything else in
+ * main() -- every millisecond without this held is a millisecond the board
+ * risks losing power. Harmless on the DK: the same i2c_demo()-scanned bus,
+ * just cleanly NACKed since nothing is at this address there.
+ */
+#define STC3100_I2C_ADDR    0x70
+#define STC3100_REG_MODE    0
+#define STC3100_REG_CONTROL 1
+#define STC3100_MODE_RUN    0x10
+#define STC3100_CTRL_RESET  0x02
+
+static void stc3100_power_latch_hold(void)
+{
+	const struct device *i2c = DEVICE_DT_GET(DT_NODELABEL(arduino_i2c));
+
+	if (!device_is_ready(i2c)) {
+		return;
+	}
+
+	uint8_t reset_cmd[2] = { STC3100_REG_CONTROL, STC3100_CTRL_RESET };
+	int err = i2c_write(i2c, reset_cmd, sizeof(reset_cmd), STC3100_I2C_ADDR);
+
+	if (err) {
+		/* No STC3100 on this bus (e.g. the DK) -- nothing to hold. */
+		return;
+	}
+
+	k_msleep(1);
+
+	uint8_t mode_cmd[2] = { STC3100_REG_MODE, STC3100_MODE_RUN };
+
+	i2c_write(i2c, mode_cmd, sizeof(mode_cmd), STC3100_I2C_ADDR);
+
+	printk("stc3100: power latch held (CONTROL reset, MODE run)\n");
+}
+
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
 
@@ -174,11 +223,52 @@ static void storage_demo(void)
 	qspi_flash_demo();
 }
 
+#if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), gps_reset_gpios)
+/* GPS_R/GPS_S/FIX_PIN (custom_board_v3.h) -- only defined on the real PCB's
+ * board files (stravav11_nrf52840.dts), not the DK, since the DK has no
+ * counterpart pins for them. GPS_R/GPS_S are active-low (TDD/Simulator.cpp
+ * only emits NMEA data once both read high), so "released" (module out of
+ * reset/standby, its normal running state) means driving both to their
+ * GPIO_DT_SPEC-relative INACTIVE level -- physically high. Previously left
+ * floating, which is the likely reason the GPS UART received unexplained
+ * bytes on every boot (Phase 11): nothing ever held the module in a known
+ * state either way. FIX_PIN is active-high, GPS-to-MCU. */
+static const struct gpio_dt_spec gps_reset =
+	GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), gps_reset_gpios);
+static const struct gpio_dt_spec gps_standby =
+	GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), gps_standby_gpios);
+static const struct gpio_dt_spec gps_fix =
+	GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), gps_fix_gpios);
+
+static void gps_pins_release(void)
+{
+	if (!gpio_is_ready_dt(&gps_reset) || !gpio_is_ready_dt(&gps_standby) ||
+	    !gpio_is_ready_dt(&gps_fix)) {
+		printk("gps: reset/standby/fix GPIO device not ready\n");
+		return;
+	}
+
+	gpio_pin_configure_dt(&gps_reset, GPIO_OUTPUT_INACTIVE);
+	gpio_pin_configure_dt(&gps_standby, GPIO_OUTPUT_INACTIVE);
+	gpio_pin_configure_dt(&gps_fix, GPIO_INPUT);
+
+	printk("gps: reset/standby released, fix pin reads %d\n", gpio_pin_get_dt(&gps_fix));
+}
+#else
+static void gps_pins_release(void)
+{
+}
+#endif
+
 static void uart_demo(void)
 {
 	/* Phase 6: GPS module UART (arduino_serial/uart1, see the overlay).
-	 * No GPS module attached -- proves TX completes and RX doesn't hang,
-	 * not that anything is received (nothing there to send). */
+	 * On the DK, no GPS module is attached -- this only proves TX
+	 * completes and RX doesn't hang, not that anything is received. On
+	 * the real PCB (Phase 11), gps_pins_release() below takes the module
+	 * out of reset/standby first, so RX bytes here are real. */
+	gps_pins_release();
+
 	const struct device *uart = DEVICE_DT_GET(DT_NODELABEL(arduino_serial));
 
 	if (!device_is_ready(uart)) {
@@ -244,6 +334,8 @@ static void display_demo(void)
 
 int main(void)
 {
+	stc3100_power_latch_hold();
+
 	printk("=== stravaV11 Phase 2/3 DK bring-up ===\n");
 
 	led_button_demo();
