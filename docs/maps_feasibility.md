@@ -182,6 +182,37 @@ whole-country-scale run would also want the `OSM_Extract`-style
 folder-grouping the library survey documents, not implemented here (a
 flat directory is fine for a single-region test extract).
 
+## On-device tile parser
+
+`stravaV11_app/lib/source/maps/map_tile.{h,c}` (2026-09-06), validated on
+`native_sim`. Deliberately not a bounded-array-copy decoder that expands
+a whole tile into a float array — RAM is the tightest constraint
+identified in this study, so it's a stateful iterator directly over the
+caller-owned buffer (`map_tile_iter_init()`/`map_tile_iter_next()`),
+decoding one point to float lat/lon at a time via `map_tile_point_at()`,
+matching this project's existing wire-format-parsing convention
+(`bt_cp_client.c`'s `sys_get_le16()`/`sys_get_le32()`, not a struct
+overlay — portable across alignment/padding rules). Also implements
+`map_tile_name_for(lat, lon, name_out)`: the lat/lon-to-filename half of
+"loading" a tile, using `MAP_TILE_DEG` kept in sync with
+`osm_to_tiles.py`'s `TILE_DEG` and double-precision internally to avoid
+a float32-vs-Python-float64 rounding mismatch right at a tile boundary.
+
+**Validated against a real tool-generated tile, not hand-crafted bytes**:
+`stravaV11_app/lib/source/maps/test_tile_data.h` embeds the actual bytes
+of `tile_2_2.bin` from the offline tool's own synthetic-PBF test run
+(chosen specifically for its non-zero tile origin, so the test exercises
+`map_tile_point_at()`'s origin+delta addition, which an origin-(0,0)
+tile wouldn't). `stravaV11_app/src/main.cpp`'s smoke test decodes it and
+checks every value against expectations hand-computed with Python's
+`struct` module (not just trusting the C parser to agree with itself):
+polyline count, road class, all 5 points' lat/lon, clean end-of-iteration
+after the last polyline, `map_tile_name_for(0.05, 0.05)` resolving to the
+same `tile_2_2.bin` the point actually lives in, and two error paths (bad
+magic, a buffer too short to hold the header). **All pass** on
+`native_sim` (`west build -b native_sim/native/64 stravaV11_app`, then
+run `zephyr.exe`).
+
 ## Real risks and open questions
 
 1. ~~**SD FAT filesystem is unproven.**~~ **Resolved 2026-09-06, validated
@@ -220,9 +251,14 @@ flat directory is fine for a single-region test extract).
    card.~~ **Done** — see risk #1 above.
 2. ~~Build the offline OSM-to-binary-tile conversion tool.~~ **Done** —
    see "Offline conversion tool" below.
-3. On-device: file-based tile loader + a minimal parser, tested on
-   `native_sim` first (matches this port's established "logic before
-   hardware" discipline).
+3. ~~On-device: a minimal parser, tested on `native_sim` first.~~ **Done**
+   — see "On-device tile parser" below. The real file-reading half of
+   "loader" (an `fs_open()`/`fs_read()` wrapper on the real SD card) is
+   deliberately not part of this step, and still open — everything about
+   *what* to load (`map_tile_name_for()`) and how to *decode* it
+   (`map_tile.c`) is hardware-agnostic and validated; only the trivial,
+   already-de-risked "open this exact filename and read its bytes" glue
+   (proven safe in step 1's `sd_fat_demo()`) remains.
 4. Wire the (currently dead) `Zoom` projection math to real rendering via
    `ZephyrGFX`, validate against `native_sim` with a fixed test tile.
 5. Hardware bring-up on the real board: real SD-backed tiles, real

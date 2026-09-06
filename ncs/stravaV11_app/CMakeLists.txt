@@ -25,6 +25,7 @@ target_include_directories(app PRIVATE
   ${LIB_ROOT}/source/display
   ${LIB_ROOT}/source/parsers
   ${LIB_ROOT}/source/sensors
+  ${LIB_ROOT}/source/maps
   ${LIB_ROOT}/libraries/utils
   ${LIB_ROOT}/libraries/kalman
   ${LIB_ROOT}/libraries/VParser
@@ -51,6 +52,7 @@ target_sources(app PRIVATE
   ${LIB_ROOT}/source/model/Locator.cpp
   ${LIB_ROOT}/source/display/SegmentManager.cpp
   ${LIB_ROOT}/source/display/Zoom.cpp
+  ${LIB_ROOT}/source/maps/map_tile.c
   ${LIB_ROOT}/libraries/utils/utils.c
   ${LIB_ROOT}/libraries/utils/WString.cpp
   ${LIB_ROOT}/libraries/kalman/kalman_ext.cpp

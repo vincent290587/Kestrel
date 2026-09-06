@@ -2,7 +2,8 @@
  * Phase 1/6 smoke test: exercises the hardware-agnostic slice of stravaV10's
  * business logic (routes/geometry, power/HR zone binning, the order-1
  * filter, the Komoot icon lookup, and now GPS/NMEA decode via TinyGPS++ +
- * Locator) ported to build under Zephyr.
+ * Locator) ported to build under Zephyr. Also exercises map_tile.c, new
+ * (not ported) code for the maps feature -- see docs/maps_feasibility.md.
  *
  * This is deliberately not a ztest suite yet -- the goal here is proving the
  * code builds and runs correctly on native_sim before investing in a real
@@ -12,6 +13,7 @@
  * CLAUDE.md).
  */
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -24,6 +26,8 @@
 #include "Locator.h"
 #include "ZephyrGFX.h"
 #include "Org_01.h"
+#include "map_tile.h"
+#include "test_tile_data.h"
 
 extern UserSettings u_settings;
 
@@ -104,6 +108,69 @@ int main(void)
 	eLocationSource src = locator.getPosition(loc, date);
 	printf("Locator source=%d lat=%.4f lon=%.4f speed=%.2f\n", (int)src, (double)loc.lat,
 	       (double)loc.lon, (double)loc.speed);
+
+	// --- map_tile: decode a real tools/osm_to_tiles.py-generated tile
+	// (test_tile_data.h, not hand-crafted bytes) and check every
+	// decoded value against hand-computed expectations, same rigor as
+	// the NMEA test above. ---
+	{
+		struct map_tile_iter it;
+		int rc = map_tile_iter_init(&it, test_tile_bytes, sizeof(test_tile_bytes));
+
+		printf("map_tile: iter_init() -> %d (expect 0)\n", rc);
+
+		struct map_tile_polyline pl;
+		int got = map_tile_iter_next(&it, &pl);
+
+		printf("map_tile: polyline road_class=%u point_count=%u (expect class=%d count=%d)\n",
+		       pl.road_class, pl.point_count, TEST_TILE_EXPECTED_ROAD_CLASS,
+		       TEST_TILE_EXPECTED_POINT_COUNT);
+
+		bool points_ok = (got == 1) && (pl.point_count == TEST_TILE_EXPECTED_POINT_COUNT);
+
+		for (uint16_t i = 0; points_ok && i < pl.point_count; i++) {
+			float lat = 0.f, lon = 0.f;
+
+			map_tile_point_at(&it, &pl, i, &lat, &lon);
+			float dlat = lat - test_tile_expected_lat[i];
+			float dlon = lon - test_tile_expected_lon[i];
+
+			if (fabsf(dlat) > 1e-5f || fabsf(dlon) > 1e-5f) {
+				printf("map_tile: point %u MISMATCH: got (%.6f,%.6f) expected (%.6f,%.6f)\n",
+				       i, (double)lat, (double)lon, (double)test_tile_expected_lat[i],
+				       (double)test_tile_expected_lon[i]);
+				points_ok = false;
+			}
+		}
+		printf("map_tile: all %d points %s\n", TEST_TILE_EXPECTED_POINT_COUNT,
+		       points_ok ? "MATCH" : "MISMATCH");
+
+		int after_last = map_tile_iter_next(&it, &pl);
+		printf("map_tile: iter_next() after last polyline -> %d (expect 0, clean end)\n",
+		       after_last);
+
+		// --- map_tile_name_for: same tile grid tools/osm_to_tiles.py
+		// used to produce this exact test tile -- (0.05, 0.05) is
+		// inside it (origin 0.04,0.04 + TILE_DEG 0.02), so this must
+		// name the same file. ---
+		char name[MAP_TILE_NAME_MAX];
+
+		map_tile_name_for(0.05f, 0.05f, name);
+		printf("map_tile: name_for(0.05, 0.05) = \"%s\" (expect \"tile_2_2.bin\")\n", name);
+
+		// --- error paths: a buffer that doesn't start with the magic,
+		// and one that's too short to hold even the fixed header. ---
+		static const uint8_t bad_magic[24] = { 'X', 'X', 'X', 'X', 'X', 'X', 'X', 'X' };
+		int bad_magic_rc = map_tile_iter_init(&it, bad_magic, sizeof(bad_magic));
+
+		printf("map_tile: iter_init(bad magic) -> %d (expect %d)\n", bad_magic_rc,
+		       MAP_TILE_ERR_BAD_MAGIC);
+
+		int too_short_rc = map_tile_iter_init(&it, test_tile_bytes, 4);
+
+		printf("map_tile: iter_init(4-byte buffer) -> %d (expect %d)\n", too_short_rc,
+		       MAP_TILE_ERR_TOO_SHORT);
+	}
 
 	// --- ZephyrGFX: draw text (real font rasterization) + shapes, then
 	// sanity-check via pixel count -- can't see actual pixels without real
