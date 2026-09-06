@@ -62,6 +62,26 @@
 		sw2 = &button2;
 		watchdog0 = &wdt0;
 	};
+
+	/* GPS module control/status GPIOs (GPS_R/GPS_S/FIX_PIN in
+	 * custom_board_v3.h), not driven by any code yet -- neither the
+	 * unported real GPSMGMT.cpp hardware layer nor this port's
+	 * uart_demo() touch them, which is the likely reason the GPS UART
+	 * receives unexplained bytes on every boot (see CLAUDE.md Phase 11):
+	 * with both left floating/undriven, the module is never actually
+	 * held in reset or standby, so it's free to run and transmit on its
+	 * own. Polarity (active-low reset/standby, active-high fix) is taken
+	 * from the only place in the codebase that encodes it --
+	 * TDD/Simulator.cpp only emits NMEA data once
+	 * `gpio_get(GPS_R) && gpio_get(GPS_S)` are both high, and drives
+	 * FIX_PIN high to signal a fix -- not from any real hardware driver,
+	 * since GPSMGMT.cpp's actual pin handling was never ported (Phase 6).
+	 */
+	zephyr_user: zephyr,user {
+		gps-reset-gpios = <&gpio0 3 GPIO_ACTIVE_LOW>;
+		gps-standby-gpios = <&gpio1 15 GPIO_ACTIVE_LOW>;
+		gps-fix-gpios = <&gpio1 14 GPIO_ACTIVE_HIGH>;
+	};
 };
 
 &reg0 {
