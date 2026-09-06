@@ -29,6 +29,9 @@ target_sources(app PRIVATE
   src/ble_demo.c
   src/ant_demo.c
   src/gfx_demo.cpp
+  src/task_demo.c
+  src/power_demo.c
+  src/poll_demo.c
   lib/bt_cp_client.c
   lib/libraries/AdafruitGFX/Adafruit_GFX.cpp
   lib/libraries/AdafruitGFX/Print.cpp

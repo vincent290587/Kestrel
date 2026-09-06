@@ -30,6 +30,9 @@
 #include "ble_demo.h"
 #include "ant_demo.h"
 #include "gfx_demo.h"
+#include "task_demo.h"
+#include "power_demo.h"
+#include "poll_demo.h"
 
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
@@ -251,6 +254,9 @@ int main(void)
 	uart_demo();
 	ant_demo_start();
 	ble_demo_start();
+	task_demo_start();
+	power_demo_start();
+	poll_demo_start();
 
 	printk("=== bring-up smoke test done ===\n");
 	return 0;
