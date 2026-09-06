@@ -19,7 +19,9 @@
 /.claude/
 
 # User-provided ANT+ license key (not build-generated -- placed here
-# deliberately). Not currently wired into any build (prj.conf still uses
-# CONFIG_ANT_EVALUATION_KEY, not this). Kept out of git as credential-like
-# material, same as any license/API key.
+# deliberately). stravaV11_fw/CMakeLists.txt extracts the key string from
+# this header at configure time and feeds it to Kconfig's
+# CONFIG_ANT_LICENSE_KEY via a generated conf fragment (sdk-ant reads a
+# Kconfig string, not a header define, for this -- see that CMakeLists.txt).
+# Kept out of git as credential-like material, same as any license/API key.
 /ANT_license.h

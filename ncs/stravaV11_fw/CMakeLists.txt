@@ -5,6 +5,31 @@ cmake_minimum_required(VERSION 3.20.0)
 # rather than a manifest import.
 list(APPEND ZEPHYR_EXTRA_MODULES ${CMAKE_CURRENT_SOURCE_DIR}/../ant)
 
+# Real ANT+ license key: sdk-ant reads it as the Kconfig string
+# CONFIG_ANT_LICENSE_KEY (ant/init/ant_init.c's ant_stack_init() call), not
+# from a header define -- so the repo-root ANT_license.h (gitignored,
+# credential-like material -- see .gitignore) can't be #included anywhere
+# to take effect. Instead, extract the key string from it here and hand it
+# to Kconfig via a generated fragment on EXTRA_CONF_FILE, which must be set
+# before find_package(Zephyr) below. If the header is missing, prj.conf's
+# CONFIG_ANT_EVALUATION_KEY=y fallback applies instead -- so a checkout
+# without the user's personal key still builds, just against the public
+# evaluation key.
+set(ant_license_header ${CMAKE_CURRENT_SOURCE_DIR}/../../ANT_license.h)
+if(EXISTS ${ant_license_header})
+  file(READ ${ant_license_header} ant_license_header_contents)
+  string(REGEX MATCH "ANT_LICENSE_KEY[ \t]+\"([^\"]+)\"" _ "${ant_license_header_contents}")
+  if(CMAKE_MATCH_1)
+    set(ant_license_conf ${CMAKE_BINARY_DIR}/ant_license_generated.conf)
+    file(WRITE ${ant_license_conf} "CONFIG_ANT_LICENSE_KEY=\"${CMAKE_MATCH_1}\"\n")
+    set(EXTRA_CONF_FILE ${ant_license_conf})
+  else()
+    message(WARNING "ANT_license.h found but no ANT_LICENSE_KEY \"...\" define in it -- falling back to the ANT_EVALUATION_KEY default")
+  endif()
+else()
+  message(WARNING "ANT_license.h not found at repo root -- falling back to the ANT_EVALUATION_KEY default (non-commercial use only)")
+endif()
+
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(stravav11_fw)
 
