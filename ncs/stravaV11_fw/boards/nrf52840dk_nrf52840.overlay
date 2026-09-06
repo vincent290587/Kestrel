@@ -6,9 +6,14 @@
  * pin assignments come back when the custom PCB's own board definition is
  * written (a later phase); nothing here should be read as the final wiring.
  *
- * width/height (400x240) and serial-vcom-inversion (no EXTCOMIN pin) match
- * stravaV10's own drivers/lcd/ls027.c, which toggles VCOM in-band over SPI
- * rather than via a dedicated EXTCOMIN GPIO.
+ * No VCOM-related properties: on the real PCB, VCOM is toggled by a
+ * hardware circuit, not software at all (confirmed with the user during
+ * Phase 11) -- ls0xx.c gates all of its VCOM-toggling code behind
+ * DT_INST_NODE_HAS_PROP(0, extcomin_gpios), so omitting both that and
+ * serial-vcom-inversion (which also doesn't exist in the driver's
+ * devicetree binding at the sdk-nrf v3.2.4 this workspace is now pinned
+ * to -- see CLAUDE.md Phase 11) means the driver only ever does plain SPI
+ * content writes here, matching the real board's node.
  */
 
 #include <zephyr/dt-bindings/gpio/arduino-header-r3.h>
@@ -47,8 +52,6 @@
 		spi-max-frequency = <2000000>;
 		width = <400>;
 		height = <240>;
-		serial-vcom-inversion;
-		serial-vcom-interval = <1000>;
 	};
 
 	/*

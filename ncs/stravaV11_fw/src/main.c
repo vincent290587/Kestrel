@@ -167,9 +167,15 @@ static void fram_demo(void)
 
 	printk("fram: ready, size=%zu bytes\n", eeprom_get_size(fram));
 
-	uint8_t pattern[4] = { 0xDE, 0xAD, 0xBE, 0xEF };
+	static const uint8_t pattern[4] = { 0xDE, 0xAD, 0xBE, 0xEF };
+	uint8_t readback[sizeof(pattern)] = { 0 };
+
 	int err = eeprom_write(fram, 0, pattern, sizeof(pattern));
 	printk("eeprom_write() -> %d\n", err);
+
+	err = eeprom_read(fram, 0, readback, sizeof(readback));
+	printk("eeprom_read() -> %d, %s\n", err,
+	       memcmp(pattern, readback, sizeof(pattern)) == 0 ? "MATCH" : "MISMATCH");
 }
 
 static void disk_raw_ioctl_demo(const char *name)
@@ -185,6 +191,30 @@ static void disk_raw_ioctl_demo(const char *name)
 	disk_access_ioctl(name, DISK_IOCTL_GET_SECTOR_COUNT, &block_count);
 	disk_access_ioctl(name, DISK_IOCTL_GET_SECTOR_SIZE, &block_size);
 	printk("disk %s: init ok, %u sectors x %u bytes\n", name, block_count, block_size);
+
+	/* Real write/read/verify round trip, same rigor as qspi_flash_demo()
+	 * below -- enumeration alone (sector count/size) doesn't prove data
+	 * actually moves correctly. Sector 0 is fine here: confirmed with
+	 * the user this card is blank/scratch, not carrying real data. */
+	if (block_size == 512) {
+		static uint8_t pattern[512];
+		static uint8_t readback[512];
+
+		for (size_t i = 0; i < sizeof(pattern); i++) {
+			pattern[i] = (uint8_t)i;
+		}
+
+		err = disk_access_write(name, pattern, 0, 1);
+		printk("disk %s: write() -> %d\n", name, err);
+
+		err = disk_access_read(name, readback, 0, 1);
+		printk("disk %s: read() -> %d, %s\n", name, err,
+		       memcmp(pattern, readback, sizeof(pattern)) == 0 ? "MATCH" : "MISMATCH");
+	} else {
+		printk("disk %s: unexpected sector size %u, skipping write/read test\n", name,
+		       block_size);
+	}
+
 	disk_access_ioctl(name, DISK_IOCTL_CTRL_DEINIT, NULL);
 }
 
@@ -192,13 +222,28 @@ static void qspi_flash_demo(void)
 {
 	/* Real, populated hardware: erase/write/read/verify directly against
 	 * the DK's on-board mx25r64 QSPI NOR chip (see the overlay for why
-	 * this is the direct flash API rather than disk_access/FAT). */
+	 * this is the direct flash API rather than disk_access/FAT). On the
+	 * real PCB, this node is the board's actual external chip -- labeled
+	 * mx25r64 for main.c source-compat (see the board .dts), but the
+	 * jedec-id configured there (20 ba 18) is Micron's, matching
+	 * libraries/SST/mt25.c's own read_id, not an SST/Microchip part
+	 * (manufacturer byte would be 0xBF, not 0x20) despite the
+	 * "libraries/SST" directory name -- confirmed below by reading the
+	 * chip's actual ID back, not just trusting the devicetree config
+	 * (which nrf_qspi_nor.c's own init already hard-validates: a
+	 * mismatch returns -ENODEV and device_is_ready() would be false). */
 	const struct device *flash = DEVICE_DT_GET(DT_NODELABEL(mx25r64));
 
 	if (!device_is_ready(flash)) {
 		printk("mx25r64: not ready\n");
 		return;
 	}
+
+	uint8_t jedec_id[3] = { 0 };
+	int jedec_err = flash_read_jedec_id(flash, jedec_id);
+
+	printk("mx25r64: flash_read_jedec_id() -> %d, id=%02x %02x %02x\n", jedec_err,
+	       jedec_id[0], jedec_id[1], jedec_id[2]);
 
 	static const uint8_t pattern[16] = {
 		0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x11, 0x22, 0x33,
