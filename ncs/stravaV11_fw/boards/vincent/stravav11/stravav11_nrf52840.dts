@@ -164,14 +164,24 @@ arduino_i2c: &i2c0 {
 	pinctrl-1 = <&spi2_sleep>;
 	pinctrl-names = "default", "sleep";
 
+	/* No VCOM-related properties: VCOM on this board is toggled by a
+	 * hardware circuit, not software (confirmed with the user) -- so
+	 * neither serial-vcom-inversion (the v3.3.4-only in-band SPI
+	 * approach this port used before, which turned out to be
+	 * unnecessary all along) nor extcomin-gpios (a dedicated MCU pin
+	 * this board doesn't have) apply. ls0xx.c gates all of its VCOM
+	 * toggling code behind DT_INST_NODE_HAS_PROP(0, extcomin_gpios); with
+	 * neither property present, the driver only ever does plain SPI
+	 * content writes and never touches VCOM, which is exactly correct
+	 * here. This also means the driver doesn't need the v3.3.4-only
+	 * serial-vcom-inversion binding property, so this node works
+	 * unmodified on sdk-nrf v3.2.4 too. */
 	ls027: ls0xx@0 {
 		compatible = "sharp,ls0xx";
 		reg = <0>;
 		spi-max-frequency = <2000000>;
 		width = <400>;
 		height = <240>;
-		serial-vcom-inversion;
-		serial-vcom-interval = <1000>;
 	};
 };
 
