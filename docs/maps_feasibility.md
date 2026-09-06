@@ -126,13 +126,14 @@ the concrete reason SD (not QSPI) has to be the map store.
    on real hardware.** `CONFIG_FAT_FILESYSTEM_ELM` mounts cleanly on the
    real SD card (`fs_mount("/SD:") -> 0`), and a real file create/write/
    read/verify round trip succeeds (`stravaV11_fw/src/main.c`'s
-   `sd_fat_demo()`, see `CLAUDE.md`). One real gotcha hit along the way,
-   worth remembering for the actual map-tile file layout: filenames must
-   be 8.3-format unless `CONFIG_FS_FATFS_LFN` is enabled (a name like
-   `stravav11_test.txt` fails `fs_open()` with `-ENOENT`, not an
-   obviously-named length error) — so either keep on-device tile
-   filenames within 8.3 (e.g. hex-encoded tile coordinates), or enable
-   LFN when the time comes.
+   `sd_fat_demo()`, see `CLAUDE.md`). One real gotcha hit along the way:
+   filenames must be 8.3-format unless `CONFIG_FS_FATFS_LFN` is enabled (a
+   name like `stravav11_test.txt` fails `fs_open()` with `-ENOENT`, not an
+   obviously-named length error). **`CONFIG_FS_FATFS_LFN` is now enabled**
+   (default BSS working-buffer mode — fine, no concurrent FS access from
+   multiple threads yet) and re-validated: the same long filename now
+   creates/writes/reads back correctly, listed by its full name. Future
+   map-tile filenames aren't 8.3-constrained.
 2. **RAM is the tightest constraint**, and it's shared with ANT+/BLE/
    display/everything else already running concurrently — the tile cache
    size has to be sized empirically against real peak usage, not assumed.

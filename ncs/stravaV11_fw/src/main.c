@@ -272,7 +272,7 @@ static void sd_fat_demo(void)
 	struct fs_file_t file;
 
 	fs_file_t_init(&file);
-	err = fs_open(&file, "/SD:/STRAVA11.TXT", FS_O_CREATE | FS_O_WRITE);
+	err = fs_open(&file, "/SD:/stravav11_test.txt", FS_O_CREATE | FS_O_WRITE);
 	printk("sd_fat: fs_open(write) -> %d\n", err);
 	if (err == 0) {
 		ssize_t written = fs_write(&file, test_data, sizeof(test_data));
@@ -282,7 +282,7 @@ static void sd_fat_demo(void)
 	}
 
 	fs_file_t_init(&file);
-	err = fs_open(&file, "/SD:/STRAVA11.TXT", FS_O_READ);
+	err = fs_open(&file, "/SD:/stravav11_test.txt", FS_O_READ);
 	printk("sd_fat: fs_open(read) -> %d\n", err);
 	if (err == 0) {
 		ssize_t bytes_read = fs_read(&file, readback, sizeof(readback));
