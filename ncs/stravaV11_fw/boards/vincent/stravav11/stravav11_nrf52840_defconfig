@@ -29,3 +29,13 @@ CONFIG_SEGGER_RTT_BUFFER_SIZE_UP=2048
 # firmware pausing on RTT writes if no reader is attached at all -- fine
 # for bring-up/debug builds, not appropriate for production.
 CONFIG_SEGGER_RTT_MODE_BLOCK_IF_FIFO_FULL=y
+
+# A separate, upstream bottleneck from either RTT buffer above:
+# CONFIG_LOG_PRINTK=y routes printk() (and LOG_INF() etc.) through the
+# deferred logging pipeline's own message ring (CONFIG_LOG_BUFFER_SIZE,
+# default 1024B, CONFIG_LOG_MODE_OVERFLOW=y i.e. drop-on-full) *before*
+# any of it reaches the RTT backend -- so even with both RTT-level fixes
+# above, a single large message queued right before a burst of other log
+# calls could still be the one dropped (observed: the GPS UART RX-dump
+# line, immediately preceding ant_demo_start()'s own LOG_INF burst).
+CONFIG_LOG_BUFFER_SIZE=4096

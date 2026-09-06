@@ -283,16 +283,56 @@ static void uart_demo(void)
 	}
 	printk("arduino_serial: TX complete (%u bytes)\n", (unsigned)(sizeof(msg) - 1));
 
-	unsigned char rx;
+	/* Capture and print the actual bytes, not just a count: on the real
+	 * PCB (Phase 11) something answers here even though nothing decodes
+	 * it yet. Polls for a wall-clock window, not a fixed iteration count
+	 * -- uart_poll_in() is non-blocking, and a fixed spin-count can
+	 * finish before a real 9600-baud stream (~73ms for a ~70-byte NMEA
+	 * sentence) has had time to arrive. */
+	static uint8_t rx_buf[256];
 	int rx_count = 0;
+	int64_t deadline = k_uptime_get() + 2000;
 
-	for (int i = 0; i < 1000; i++) {
+	while (k_uptime_get() < deadline && rx_count < (int)sizeof(rx_buf)) {
+		unsigned char rx;
+
 		if (uart_poll_in(uart, &rx) == 0) {
-			rx_count++;
+			rx_buf[rx_count++] = rx;
+		} else {
+			/* Only sleep when idle, not while bytes are actively
+			 * arriving: a tight 2s CPU-bound spin here starved the
+			 * deferred-log thread of any chance to run, which
+			 * dropped several other boot messages queued during
+			 * this window (RTT's own buffering is unrelated --
+			 * this is Zephyr's separate deferred-log message pool
+			 * filling up because nothing could drain it). */
+			k_msleep(1);
 		}
 	}
-	printk("arduino_serial: RX poll clean, %d bytes received (0 expected, nothing attached)\n",
-	       rx_count);
+
+	/* Build the whole dump into one buffer and printk() it once -- a
+	 * separate printk() per byte flooded the deferred log queue (each one
+	 * queued as its own message) badly enough that a first attempt at
+	 * this logged "258 messages dropped", losing everything else that
+	 * boot was trying to log at the same time. */
+	static char dump[4 * sizeof(rx_buf) + 1];
+	size_t dump_len = 0;
+
+	for (int i = 0; i < rx_count && dump_len + 5 < sizeof(dump); i++) {
+		if (rx_buf[i] >= 0x20 && rx_buf[i] < 0x7f) {
+			dump[dump_len++] = (char)rx_buf[i];
+		} else {
+			dump_len += snprintf(&dump[dump_len], 5, "\\x%02x", rx_buf[i]);
+		}
+	}
+	dump[dump_len] = '\0';
+
+	printk("arduino_serial: RX got %d bytes over 2s: \"%s\"\n", rx_count, dump);
+
+	/* Give the deferred-log thread a moment to actually drain that line
+	 * before ant_demo_start() immediately queues a burst of its own --
+	 * without this, this specific message was the one getting dropped. */
+	k_msleep(5);
 }
 
 #if DT_HAS_CHOSEN(zephyr_display)
