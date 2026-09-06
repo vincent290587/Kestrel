@@ -22,6 +22,8 @@
 #include "komoot_nav.h"
 #include "UserSettings.h"
 #include "Locator.h"
+#include "ZephyrGFX.h"
+#include "Org_01.h"
 
 extern UserSettings u_settings;
 
@@ -102,6 +104,26 @@ int main(void)
 	eLocationSource src = locator.getPosition(loc, date);
 	printf("Locator source=%d lat=%.4f lon=%.4f speed=%.2f\n", (int)src, (double)loc.lat,
 	       (double)loc.lon, (double)loc.speed);
+
+	// --- ZephyrGFX: draw text (real font rasterization) + shapes, then
+	// sanity-check via pixel count -- can't see actual pixels without real
+	// glass attached (same as Phase 2's display_write() checks), but this
+	// proves the whole Adafruit_GFX -> our buffer pipeline runs correctly. ---
+	ZephyrGFX gfx;
+	gfx.fillScreen(0); // black background, so drawing in white is actually visible below
+	uint32_t before = gfx.countSetPixels();
+
+	gfx.setTextColor(1);
+	gfx.setFont(&Org_01);
+	gfx.setCursor(10, 30);
+	gfx.print("stravaV11");
+	gfx.drawRect(0, 0, 100, 50, 1);
+	gfx.fillRect(120, 10, 30, 30, 1);
+	gfx.drawLine(0, 100, 399, 239, 1);
+
+	uint32_t after = gfx.countSetPixels();
+	printf("ZephyrGFX: buffer=%zu bytes, pixels set %u -> %u (%s)\n", gfx.getBufferSize(), before,
+	       after, after > before ? "drew something" : "BUG: nothing drawn");
 
 	printf("=== smoke test done ===\n");
 	return 0;

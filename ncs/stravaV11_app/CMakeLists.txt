@@ -31,6 +31,9 @@ target_include_directories(app PRIVATE
   ${LIB_ROOT}/libraries/komoot
   ${LIB_ROOT}/libraries/filters
   ${LIB_ROOT}/libraries/TinyGPSPlus
+  ${LIB_ROOT}/libraries/AdafruitGFX
+  ${LIB_ROOT}/libraries/AdafruitGFX/Fonts
+  ${LIB_ROOT}/source/vue
   ${ADAPTERS_ROOT}
 )
 
@@ -56,6 +59,9 @@ target_sources(app PRIVATE
   ${LIB_ROOT}/libraries/komoot/komoot_nav.c
   ${LIB_ROOT}/libraries/filters/order1_filter_tdd.c
   ${LIB_ROOT}/libraries/TinyGPSPlus/TinyGPS++.cpp
+  ${LIB_ROOT}/libraries/AdafruitGFX/Adafruit_GFX.cpp
+  ${LIB_ROOT}/libraries/AdafruitGFX/Print.cpp
+  ${LIB_ROOT}/source/vue/ZephyrGFX.cpp
   ${ADAPTERS_ROOT}/fram_stub.c
   ${ADAPTERS_ROOT}/gps_mgmt_stub.cpp
   ${ADAPTERS_ROOT}/millis_zephyr.c

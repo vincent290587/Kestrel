@@ -29,6 +29,7 @@
 
 #include "ble_demo.h"
 #include "ant_demo.h"
+#include "gfx_demo.h"
 
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
@@ -246,6 +247,7 @@ int main(void)
 	fram_demo();
 	storage_demo();
 	display_demo();
+	gfx_demo();
 	uart_demo();
 	ant_demo_start();
 	ble_demo_start();
