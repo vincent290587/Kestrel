@@ -26,6 +26,8 @@
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/sys/printk.h>
 
+#include "ble_demo.h"
+
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
 static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
 
@@ -211,6 +213,7 @@ int main(void)
 	fram_demo();
 	storage_demo();
 	display_demo();
+	ble_demo_start();
 
 	printk("=== bring-up smoke test done ===\n");
 	return 0;
