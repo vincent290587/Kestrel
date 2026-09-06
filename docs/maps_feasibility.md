@@ -120,6 +120,68 @@ thousand km² — likely lands in the tens-of-MB range, comfortably inside
 the 7.4GB SD card and nowhere close to fitting in 16MB QSPI NOR. This is
 the concrete reason SD (not QSPI) has to be the map store.
 
+## Offline conversion tool
+
+`ncs/stravaV11_fw/tools/osm_to_tiles.py` (2026-09-06) implements the
+pipeline described above. Full format spec and usage are in the script's
+own docstring; summary:
+
+- **Input**: an OSM PBF extract, parsed with the `osmium` package
+  (`pip install osmium` — that's the real PyPI name; "pyosmium" is just
+  the upstream project's name, not the package name). An optional
+  `--bbox` further filters ways.
+- **Filtering**: `highway=*` values relevant to cycling only (motorway
+  through footway/cycleway/track, 6 road classes by importance), mapped
+  to a single road-class byte; anything else (buildings, waterways,
+  landuse, unmapped highway values) is dropped. No polygon/fill
+  rendering is in scope (matches the "vector lines only" rendering
+  approach — `ZephyrGFX` has no fill-polygon support and 1bpp/400x240
+  wouldn't benefit from it at road-navigation zoom anyway).
+- **Simplification**: Douglas-Peucker per way (pure Python, no extra
+  dependency), default epsilon ~16.7m, applied once on the full way
+  *before* tiling.
+- **Tiling**: a flat 0.02-degree grid (~2.2km latitude span). A way
+  crossing a tile boundary is split into per-tile segments, with the
+  boundary point duplicated into both tiles so lines still connect
+  visually when tiles are rendered side by side.
+- **On-device format**: fixed-layout little-endian binary (matches the
+  nRF52840's byte order — no swapping needed), points quantized to
+  int16 in 1e-6 degree units relative to each tile's SW corner (~11cm
+  resolution, an order of magnitude finer than the simplification
+  tolerance, so quantization itself isn't a meaningful error source).
+  One flat file per tile, named `tile_<lat_idx>_<lon_idx>.bin` — not
+  8.3-constrained now that `CONFIG_FS_FATFS_LFN` is enabled. The same
+  script has a `--dump <tile.bin>` mode to inspect a tile's contents
+  (parses back to lat/lon and asserts the byte count matches exactly),
+  useful for verifying on-device output later too.
+
+**Validated against a synthetic test PBF** (built with `osmium.SimpleWriter`,
+no network/real-extract dependency needed to test the pipeline logic
+itself — matches this port's "logic before hardware" discipline, applied
+here to "logic before a real map download"): 5 ways covering every
+control-flow path — a way crossing a tile boundary, a way with one real
+geometric deviation (correctly keeps the geometrically-necessary points
+around it — standard recursive Douglas-Peucker behavior, not a bug, even
+though it keeps more points than a naive "collapse near-collinear runs"
+intuition expects), a way of genuinely collinear points (correctly
+collapses 6 points to 2, unambiguously confirming simplification works),
+an unmapped `highway=steps` way, and a way with no `highway` tag at all.
+Result: `Ways seen: 5, kept: 3` (both drops correct), tile-boundary
+duplication confirmed byte-for-byte (the crossing point appears as the
+last point of one tile's polyline and the first point of the
+neighboring tile's), and every output tile round-trips through
+`--dump` with byte-exact structural parsing (no overrun/misalignment).
+One real bug was caught and fixed during this: `split_into_tiles()` can
+return multiple segments for the same tile (a way can leave and re-enter
+a tile), which the first version of `way()` didn't handle correctly.
+
+**Not yet done**: running this against a real Geofabrik/OSM extract of an
+actual riding area (needs the user to pick a region and download it —
+not attempted here, no real-world map data was fetched); a
+whole-country-scale run would also want the `OSM_Extract`-style
+folder-grouping the library survey documents, not implemented here (a
+flat directory is fine for a single-region test extract).
+
 ## Real risks and open questions
 
 1. ~~**SD FAT filesystem is unproven.**~~ **Resolved 2026-09-06, validated
@@ -156,9 +218,8 @@ the concrete reason SD (not QSPI) has to be the map store.
 
 1. ~~Validate `CONFIG_FAT_FILESYSTEM_ELM` actually mounts on the SD
    card.~~ **Done** — see risk #1 above.
-2. Build the offline OSM-to-binary-tile conversion tool (host-side
-   Python, same lineage as `gpx_to_c.py`), test against a small real
-   extract of the riding area.
+2. ~~Build the offline OSM-to-binary-tile conversion tool.~~ **Done** —
+   see "Offline conversion tool" below.
 3. On-device: file-based tile loader + a minimal parser, tested on
    `native_sim` first (matches this port's established "logic before
    hardware" discipline).
