@@ -23,6 +23,9 @@
 #include <zephyr/drivers/eeprom.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/flash.h>
+#if defined(CONFIG_NORDIC_QSPI_NOR)
+#include <zephyr/drivers/flash/nrf_qspi_nor.h>
+#endif
 #include <zephyr/drivers/uart.h>
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/sys/printk.h>
@@ -263,6 +266,98 @@ static void qspi_flash_demo(void)
 	       memcmp(pattern, readback, sizeof(pattern)) == 0 ? "MATCH" : "MISMATCH");
 }
 
+/* nRF52840's QSPI peripheral can map the external NOR chip's contents
+ * straight onto the CPU's memory bus for reads (XIP -- execute/access in
+ * place) instead of going through flash_read()'s SPI command sequence
+ * each time. There's no devicetree node for this window (Zephyr's QSPI
+ * NOR driver only models the chip as a flash_read()/flash_write() device,
+ * not a memory-mapped one) -- the address below is Nordic's own
+ * NRF_MEMORY_EXTFLASH_BASE (nrfx's nrf52840_xxaa_memory.h), not something
+ * discoverable from devicetree, hence hardcoded here with this comment as
+ * the paper trail. Same address on both boards: it's an nRF52840 SoC
+ * property, not a per-board pin/wiring detail. */
+#define QSPI_XIP_BASE_ADDR 0x12000000UL
+#define QSPI_XIP_TEST_SIZE (256 * 1024)
+#define QSPI_XIP_CHUNK_SIZE 256
+
+static uint8_t qspi_xip_test_pattern_byte(uint32_t offset)
+{
+	/* A multiplicative-hash pseudorandom byte per offset, not a trivial
+	 * incrementing/repeating pattern -- deliberately gives every byte
+	 * position its own bit pattern so a stuck bit or a
+	 * misaddressed/aliased region anywhere across the 256KB span would
+	 * show up as a mismatch instead of hiding behind a repeated value. */
+	return (uint8_t)((offset * 2654435761u) >> 24);
+}
+
+static void qspi_xip_demo(const struct device *flash)
+{
+#if defined(CONFIG_NORDIC_QSPI_NOR)
+	static uint8_t chunk[QSPI_XIP_CHUNK_SIZE] __aligned(4);
+	int err;
+
+	err = flash_erase(flash, 0, QSPI_XIP_TEST_SIZE);
+	printk("mx25r64: xip test flash_erase(%u) -> %d\n", QSPI_XIP_TEST_SIZE, err);
+	if (err != 0) {
+		return;
+	}
+
+	for (uint32_t off = 0; off < QSPI_XIP_TEST_SIZE; off += sizeof(chunk)) {
+		for (uint32_t i = 0; i < sizeof(chunk); i++) {
+			chunk[i] = qspi_xip_test_pattern_byte(off + i);
+		}
+		err = flash_write(flash, off, chunk, sizeof(chunk));
+		if (err != 0) {
+			printk("mx25r64: xip test flash_write() failed at %u -> %d\n", off, err);
+			return;
+		}
+	}
+	printk("mx25r64: xip test wrote %u bytes via flash_write()\n", QSPI_XIP_TEST_SIZE);
+
+	/* Baseline via the normal command-based API first -- if this doesn't
+	 * match, the bug isn't in XIP/memory-mapping. */
+	uint32_t normal_mismatches = 0;
+
+	for (uint32_t off = 0; off < QSPI_XIP_TEST_SIZE; off += sizeof(chunk)) {
+		err = flash_read(flash, off, chunk, sizeof(chunk));
+		if (err != 0) {
+			printk("mx25r64: xip test flash_read() failed at %u -> %d\n", off, err);
+			return;
+		}
+		for (uint32_t i = 0; i < sizeof(chunk); i++) {
+			if (chunk[i] != qspi_xip_test_pattern_byte(off + i)) {
+				normal_mismatches++;
+			}
+		}
+	}
+	printk("mx25r64: xip test normal-API readback: %u/%u byte mismatches\n",
+	       normal_mismatches, QSPI_XIP_TEST_SIZE);
+
+	/* Now the actual point of this test: enable memory-mapped mode and
+	 * read the exact same region straight off the CPU's memory bus,
+	 * byte by byte, instead of through flash_read(). */
+	nrf_qspi_nor_xip_enable(flash, true);
+
+	const volatile uint8_t *xip = (const volatile uint8_t *)QSPI_XIP_BASE_ADDR;
+	uint32_t xip_mismatches = 0;
+
+	for (uint32_t off = 0; off < QSPI_XIP_TEST_SIZE; off++) {
+		if (xip[off] != qspi_xip_test_pattern_byte(off)) {
+			xip_mismatches++;
+		}
+	}
+
+	nrf_qspi_nor_xip_enable(flash, false);
+
+	printk("mx25r64: xip memory-mapped readback: %u/%u byte mismatches -> %s\n",
+	       xip_mismatches, QSPI_XIP_TEST_SIZE,
+	       (normal_mismatches == 0 && xip_mismatches == 0) ? "MATCH" : "MISMATCH");
+#else
+	ARG_UNUSED(flash);
+	printk("mx25r64: xip test skipped (CONFIG_NORDIC_QSPI_NOR not enabled)\n");
+#endif
+}
+
 static void storage_demo(void)
 {
 	/* SD card: no card/slot on this DK (see the overlay) -- this just
@@ -270,6 +365,12 @@ static void storage_demo(void)
 	disk_raw_ioctl_demo("SD");
 
 	qspi_flash_demo();
+
+	const struct device *qspi_flash = DEVICE_DT_GET(DT_NODELABEL(mx25r64));
+
+	if (device_is_ready(qspi_flash)) {
+		qspi_xip_demo(qspi_flash);
+	}
 }
 
 #if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), gps_reset_gpios)

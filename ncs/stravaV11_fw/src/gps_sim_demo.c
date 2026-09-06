@@ -23,6 +23,12 @@
  * Runs independently of uart_demo()'s real GPS UART path -- this is a
  * separate, opt-in override, not a replacement; nothing here touches the
  * real UART device at all.
+ *
+ * The RTT command channel needs CONFIG_USE_SEGGER_RTT, which is only
+ * enabled on the custom PCB's board config (its console goes over RTT --
+ * see CLAUDE.md Phase 11 -- since its one UART is dedicated to the GPS
+ * module). The DK still uses a UART console (Phase 2-10), so this whole
+ * feature compiles out to a no-op there rather than failing to build.
  */
 
 #include <stdbool.h>
@@ -31,7 +37,9 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
+#if defined(CONFIG_USE_SEGGER_RTT)
 #include <SEGGER_RTT.h>
+#endif
 
 #include "gps_sim_route.h"
 #include "gps_demo.h"
@@ -51,10 +59,12 @@ static bool s_sim_active;
 static size_t s_route_index;
 
 static void replay_work_handler(struct k_work *work);
-static void cmd_poll_work_handler(struct k_work *work);
-
 static K_WORK_DELAYABLE_DEFINE(replay_work, replay_work_handler);
+
+#if defined(CONFIG_USE_SEGGER_RTT)
+static void cmd_poll_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(cmd_poll_work, cmd_poll_work_handler);
+#endif
 
 static void handle_command(const char *cmd)
 {
@@ -80,6 +90,7 @@ static void handle_command(const char *cmd)
 	}
 }
 
+#if defined(CONFIG_USE_SEGGER_RTT)
 static void cmd_poll_work_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
@@ -103,6 +114,7 @@ static void cmd_poll_work_handler(struct k_work *work)
 
 	k_work_schedule(&cmd_poll_work, K_MSEC(CMD_POLL_INTERVAL_MS));
 }
+#endif /* CONFIG_USE_SEGGER_RTT */
 
 static void replay_work_handler(struct k_work *work)
 {
@@ -131,7 +143,12 @@ static void replay_work_handler(struct k_work *work)
 
 void gps_sim_demo_start(void)
 {
+#if defined(CONFIG_USE_SEGGER_RTT)
 	LOG_INF("gps_sim: ready -- type \"SIM START\" or \"SIM STOP\" over the RTT "
 		"down channel %d", RTT_CMD_CHANNEL);
 	k_work_schedule(&cmd_poll_work, K_MSEC(CMD_POLL_INTERVAL_MS));
+#else
+	LOG_WRN("gps_sim: RTT command channel unavailable on this board "
+		"(CONFIG_USE_SEGGER_RTT not set) -- feature disabled");
+#endif
 }
