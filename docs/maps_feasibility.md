@@ -323,11 +323,70 @@ plumbing.
    see "On-device tile parser" below. The loading pipeline (filename
    resolution, real SD-card file read, decode) is fully validated
    end-to-end on real hardware; only real map data is still missing.
-4. Wire the (currently dead) `Zoom` projection math to real rendering via
-   `ZephyrGFX`, validate against `native_sim` with a fixed test tile.
+4. ~~Wire the (currently dead) `Zoom` projection math to real rendering
+   via `ZephyrGFX`, validate against `native_sim` with a fixed test
+   tile.~~ **Done, and validated on real hardware too** — see "Map
+   rendering" below. Zoom is a fixed constant for now (one define,
+   `MAP_RENDER_ZOOM_LEVEL`), not interactive — the user's explicit choice,
+   since no button/pan/zoom input handling exists yet (`button.h`/
+   `Notif.h` are still un-ported, per Phase 7).
 5. Hardware bring-up on the real board: real map data (an actual OSM
    extract of a riding area, not the synthetic test tile), real
-   GPS-driven panning, buttons for zoom (new input-handling work).
+   GPS-driven panning/re-centering, buttons for interactive zoom (new
+   input-handling work).
+
+## Map rendering
+
+`stravaV11_app/lib/source/maps/map_render.{h,cpp}` (2026-09-06), validated
+on `native_sim` and real hardware. Projects and draws a parsed
+`map_tile.c` buffer onto a `ZephyrGFX` canvas, centered at a caller-given
+lat/lon, using `Zoom::computeZoom()` (`source/display/Zoom.{h,cpp}`,
+ported in Phase 1, never called by anything until now) for the
+lat/lon-degree-span-to-screen-pixel math. **Zoom is a single constant**
+per the user's explicit direction — `MAP_RENDER_ZOOM_LEVEL` in
+`map_render.h`, the one value to change, not a runtime/button-driven
+level — which only needed one small, in-character addition to `Zoom`
+itself (`setZoomLevel()`, since the class previously only exposed
+`increaseZoom()`/`decreaseZoom()`/`resetZoom()`, no way to jump straight
+to an arbitrary level). Longitude maps directly to screen x; latitude
+maps to screen y inverted (north is "up", but pixel y increases
+downward). Deliberately does no manual clipping — `Adafruit_GFX`'s own
+`drawLine()`/`writePixel()` already bounds-check against the canvas, so
+points outside the current view are simply not drawn, not a
+size/overflow risk.
+
+**Validated on `native_sim`** (`stravaV11_app`'s smoke test, same real
+tool-generated `tile_2_2.bin` fixture as the parser tests): renders onto
+its own `ZephyrGFX` instance, `fillScreen(1)` (white) then black
+(color 0) lines, checked via the same before/after pixel-count rigor as
+every other `ZephyrGFX` smoke test in this port — `5 points drawn`
+(matches the tile's point count) and the set-pixel count *decreased*
+(white pixels turned black), the opposite direction from the
+black-background `ZephyrGFX` test elsewhere in the same file, which
+tripped up the first version of this check (a real, caught-and-fixed
+test bug — the render itself was correct the whole time, `96000 → 95800`
+consistently, just the pass/fail direction was backwards).
+
+**Validated on real hardware**: `stravaV11_fw/src/gfx_demo.cpp` gained
+`gfx_demo_show_map()`, called from `map_demo.c` right after it loads and
+parses the seeded tile from the SD card — reusing the exact buffer
+`fs_read()` just filled, no re-derivation. `main()` was reordered so
+`map_demo()` runs *last*, immediately before `sensor_screen_demo_start()`
+hands the display over to the periodic LIVE DATA screen for good — the
+same brief, real visible window `gfx_demo()`'s own static message
+already got, rather than being invisibly overwritten within
+milliseconds by `display_demo()`/`gfx_demo()` if drawn earlier (all
+three share the same physical screen; there's no menu/mode-switching in
+this port yet). Confirmed via a fresh-flash RTT capture: `gfx_demo:
+95880 pixels set, display_write() -> 0` (of 96000 total —120 pixels
+drawn black, matching a real, non-trivial render, not a blank push) then
+`gfx_demo: map render, 5 points drawn`, staying on screen for roughly a
+second (the LIVE DATA screen's own first redraw, `91156` pixels, is the
+next `gfx_demo:` line) before being replaced, with zero regressions
+anywhere else in the same boot. Not yet independently confirmed by the
+user looking at the physical panel — the log/pixel-count evidence is
+solid, but (per this port's own established standard for display
+features) only eyes on real glass fully closes that loop.
 
 ## On-device library survey
 

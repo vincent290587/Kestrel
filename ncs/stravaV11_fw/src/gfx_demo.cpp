@@ -36,6 +36,7 @@
 
 #include "ZephyrGFX.h"
 #include "Org_01.h"
+#include "map_render.h"
 
 #include "gfx_demo.h"
 
@@ -170,5 +171,28 @@ void gfx_demo_show_sensors(uint8_t bpm, uint16_t rr_ms, bool hrm_paired, uint32_
 	ARG_UNUSED(bsc_paired);
 	ARG_UNUSED(alt_m);
 	ARG_UNUSED(has_alt);
+#endif
+}
+
+uint32_t gfx_demo_show_map(const uint8_t *tile_buf, size_t tile_len, float center_lat,
+			    float center_lon)
+{
+#if DT_HAS_CHOSEN(zephyr_display)
+	if (!gfx_ready()) {
+		return 0;
+	}
+
+	gfx.fillScreen(1);
+	uint32_t points_drawn = map_render_tile(gfx, tile_buf, tile_len, center_lat, center_lon);
+
+	gfx_push();
+	printk("gfx_demo: map render, %u points drawn\n", points_drawn);
+	return points_drawn;
+#else
+	ARG_UNUSED(tile_buf);
+	ARG_UNUSED(tile_len);
+	ARG_UNUSED(center_lat);
+	ARG_UNUSED(center_lon);
+	return 0;
 #endif
 }

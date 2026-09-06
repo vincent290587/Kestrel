@@ -33,6 +33,7 @@
 
 #include "map_tile.h"
 #include "test_tile_data.h"
+#include "gfx_demo.h"
 #include "map_demo.h"
 
 #if defined(CONFIG_FAT_FILESYSTEM_ELM)
@@ -141,6 +142,12 @@ void map_demo(void)
 		}
 		printk("map_demo: iteration ended -> %d (0 = clean), %d polyline(s)\n", got,
 		       polyline_idx);
+
+		/* Maps-feasibility phased plan step 4/5: actually draw the
+		 * loaded tile, centered on the same point it was seeded at,
+		 * at the fixed constant zoom (map_render.h's
+		 * MAP_RENDER_ZOOM_LEVEL). */
+		gfx_demo_show_map(load_buf, (size_t)bytes_read, 0.05f, 0.05f);
 	}
 
 	fs_unmount(&mp);

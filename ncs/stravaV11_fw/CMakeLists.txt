@@ -58,6 +58,7 @@ target_include_directories(app PRIVATE
   lib/source/sensors
   lib/source/vue
   lib/source/maps
+  lib/source/display
   adapters
 )
 
@@ -79,6 +80,8 @@ target_sources(app PRIVATE
   src/map_demo.c
   lib/bt_cp_client.c
   lib/source/maps/map_tile.c
+  lib/source/maps/map_render.cpp
+  lib/source/display/Zoom.cpp
   lib/libraries/AdafruitGFX/Adafruit_GFX.cpp
   lib/libraries/AdafruitGFX/Print.cpp
   lib/libraries/utils/WString.cpp

@@ -639,13 +639,18 @@ int main(void)
 	sensor_demo("fxos8700", DEVICE_DT_GET(DT_NODELABEL(fxos8700)));
 	fram_demo();
 	storage_demo();
-	map_demo();
 	display_demo();
 	gfx_demo();
 	uart_demo();
 	ant_demo_start();
 	hrm_demo_start();
 	bsc_demo_start();
+	/* Last one-shot draw before sensor_screen_demo_start()'s periodic
+	 * LIVE DATA redraws take over the display for good -- same brief
+	 * visible window gfx_demo()'s own static message gets, rather than
+	 * being immediately overwritten by display_demo()/gfx_demo() if
+	 * called earlier (both also draw to the same physical screen). */
+	map_demo();
 	sensor_screen_demo_start();
 	ble_demo_start();
 	task_demo_start();

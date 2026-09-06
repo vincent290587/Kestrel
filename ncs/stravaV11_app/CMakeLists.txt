@@ -53,6 +53,7 @@ target_sources(app PRIVATE
   ${LIB_ROOT}/source/display/SegmentManager.cpp
   ${LIB_ROOT}/source/display/Zoom.cpp
   ${LIB_ROOT}/source/maps/map_tile.c
+  ${LIB_ROOT}/source/maps/map_render.cpp
   ${LIB_ROOT}/libraries/utils/utils.c
   ${LIB_ROOT}/libraries/utils/WString.cpp
   ${LIB_ROOT}/libraries/kalman/kalman_ext.cpp

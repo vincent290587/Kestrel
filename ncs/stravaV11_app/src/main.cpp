@@ -28,6 +28,7 @@
 #include "Org_01.h"
 #include "map_tile.h"
 #include "test_tile_data.h"
+#include "map_render.h"
 
 extern UserSettings u_settings;
 
@@ -172,6 +173,37 @@ int main(void)
 
 		printf("map_tile: iter_init(4-byte buffer) -> %d (expect %d)\n", too_short_rc,
 		       MAP_TILE_ERR_TOO_SHORT);
+	}
+
+	// --- map_render: project + draw the same real tool-generated test
+	// tile onto its own ZephyrGFX canvas, centered on the tile's own
+	// first point (0.05, 0.05) -- maps-feasibility phased plan step 4
+	// (docs/maps_feasibility.md): wiring the previously-dead Zoom
+	// projection math to real rendering, at a fixed constant zoom
+	// (MAP_RENDER_ZOOM_LEVEL). Same "check a pixel count actually
+	// changed" rigor as the ZephyrGFX test below, not just "didn't
+	// crash" -- a fillScreen(1)-then-render that silently drew nothing
+	// would otherwise look identical to a working one. ---
+	{
+		ZephyrGFX map_gfx;
+
+		map_gfx.fillScreen(1); // white background, per map_render_tile()'s own convention
+		uint32_t before = map_gfx.countSetPixels();
+
+		uint32_t points_drawn = map_render_tile(map_gfx, test_tile_bytes,
+							 sizeof(test_tile_bytes), 0.05f, 0.05f);
+
+		uint32_t after = map_gfx.countSetPixels();
+
+		/* fillScreen(1) makes every pixel "set" (white); drawLine(...,
+		 * 0) clears pixels to black, so a working render *decreases*
+		 * the set-pixel count -- the opposite direction from the
+		 * black-background ZephyrGFX test below. */
+		printf("map_render: %u points drawn (expect %d), pixels %u -> %u (%s)\n",
+		       points_drawn, TEST_TILE_EXPECTED_POINT_COUNT, before, after,
+		       (points_drawn == TEST_TILE_EXPECTED_POINT_COUNT && after < before)
+			       ? "drew something"
+			       : "BUG: nothing drawn or wrong point count");
 	}
 
 	// --- ZephyrGFX: draw text (real font rasterization) + shapes, then
