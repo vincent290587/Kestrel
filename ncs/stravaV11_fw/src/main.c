@@ -43,6 +43,7 @@
 #include "gps_sim_demo.h"
 #include "map_demo.h"
 #include "map_screen_demo.h"
+#include "sd_stress_demo.h"
 #include "Locator.h"
 #include "sensor_screen_demo.h"
 #include "task_demo.h"
@@ -662,19 +663,6 @@ int main(void)
 
 	printk("=== stravaV11 Phase 2/3 DK bring-up ===\n");
 
-	/* Methodical isolation for the map-render/power investigation
-	 * (docs/maps_feasibility.md): everything below is temporarily
-	 * disabled except what map_screen_demo_start()/gps_sim_demo_start()
-	 * actually need, to rule out interference/current draw from unrelated
-	 * subsystems. Found and fixed the render issue (a real bug in
-	 * gps_demo_get_position()/get_altitude(), unrelated to any of this --
-	 * see gps_demo.cpp) and confirmed a clean 5-minute run with zero
-	 * power loss in this reduced configuration -- but that doesn't yet
-	 * prove the full subsystem set is safe together with SD-card-backed
-	 * tile loading (the configuration that originally lost power via a
-	 * genuine POWER.RESETREAS==0 power-on reset). Restore once that's
-	 * re-checked -- nothing below was changed, only left uncalled. */
-#if 0
 	led_button_demo();
 	i2c_demo();
 	sensor_demo("bme280", DEVICE_DT_GET(DT_NODELABEL(bme280)));
@@ -683,7 +671,8 @@ int main(void)
 	storage_demo();
 	display_demo();
 	gfx_demo();
-	uart_demo();
+	uart_demo(); /* also calls gps_demo_init() -- Locator needs this regardless
+		      * of whether real NMEA bytes or gps_sim's injection feeds it. */
 	ant_demo_start();
 	hrm_demo_start();
 	bsc_demo_start();
@@ -692,12 +681,13 @@ int main(void)
 	power_demo_start();
 	poll_demo_start();
 	usb_demo_start();
-#endif
 
-	/* Normally done inside uart_demo() (disabled above) -- called
-	 * directly here since gps_sim_demo/map_screen_demo need Locator
-	 * initialized regardless of the real GPS UART path. */
-	gps_demo_init();
+	/* Re-tests the actual originally-crashing configuration directly:
+	 * the full subsystem set above, restored after the methodical
+	 * isolation that found and fixed the (separate, unrelated)
+	 * getPosition() render bug, now running alongside real, heavy,
+	 * sustained SD-card I/O again -- docs/maps_feasibility.md risk #6. */
+	sd_stress_demo_start();
 
 	map_screen_demo_start();
 	gps_sim_demo_start();

@@ -79,6 +79,7 @@ target_sources(app PRIVATE
   src/usb_demo.c
   src/map_demo.c
   src/map_screen_demo.c
+  src/sd_stress_demo.c
   lib/bt_cp_client.c
   lib/source/maps/map_tile.c
   lib/source/maps/map_render.cpp

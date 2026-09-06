@@ -315,13 +315,18 @@ plumbing.
    exist on the real board (P0.14/P0.13/P0.11) but no input-handling code
    has been ported (`button.h`/`Notif.h` are explicitly still un-ported
    per Phase 7).
-6. **A genuine power-on reset was observed** a few minutes into the
+6. ~~**A genuine power-on reset was observed** a few minutes into the
    SD-card-backed version of live map redraws (concurrent with the full
-   subsystem set) — see "Map rendering" below for the diagnosis
-   (`POWER.RESETREAS`-confirmed, not a software crash) and mitigation (a
-   self-healing power latch). Not conclusively isolated to SD-card I/O
-   specifically vs. the full concurrent load in general — re-integrating
-   the SD-card path needs this re-checked, not assumed fixed.
+   subsystem set).~~ **Resolved 2026-09-06, high confidence.** See "Map
+   rendering" below for the diagnosis (`POWER.RESETREAS`-confirmed, not
+   a software crash) and mitigation (a self-healing power latch,
+   re-asserted every 5s rather than only once at boot). Re-tested with
+   `main()` fully restored plus a new, deliberately heavier/faster SD
+   stress test (32KB every 500ms vs. the original ~10KB/1000ms) running
+   concurrently with everything else, including live map redraws: 461
+   cycles over ~400 seconds, zero corruption, zero reboots — longer than
+   both prior crash times. Not an absolute guarantee, but real evidence
+   under a harder test than the original failure case.
 
 ## Suggested phased plan
 
@@ -345,11 +350,14 @@ plumbing.
    extract of a riding area, not the synthetic test tile), real
    GPS-driven panning/re-centering~~ **done and confirmed on the physical
    panel** — see "Map rendering" below ("I could recognize streets").
-   Still open: re-integrating this with SD-card-backed tile storage
+   ~~Resolving the power-on-reset question that surfaced along the
+   way~~ **done, high confidence** — see risk #6 above. Still open:
+   re-integrating this with SD-card-backed tile storage specifically
    (current validation embeds tiles directly in flash, which doesn't
-   scale to a real riding area's worth of map data) and resolving the
-   power-on-reset question that surfaced along the way; buttons for
-   interactive zoom (new input-handling work, not started).
+   scale to a real riding area's worth of map data — the SD card itself
+   is now proven fine under heavy sustained load via `sd_stress_demo`,
+   just not yet wired back into `map_screen_demo`'s own tile loading);
+   buttons for interactive zoom (new input-handling work, not started).
 
 ## Map rendering
 
@@ -469,19 +477,33 @@ the simulated ride crossed the tile boundary mid-route
 fixed-size SPI frame transfer; render time scales with point count),
 comfortably within the 1000ms redraw budget. Zero crashes across the
 whole run — longer than either prior crash (~2:36 and ~4:55 with the
-SD-card version), pointing at SD-card usage (not the render/Zoom/
-Bresenham path, now cleared) as the power-loss trigger, though not yet
-conclusively isolated from "everything else running concurrently" as the
-two were changed together.
+SD-card version).
 
-**Not yet done**: re-integrating SD-card-backed tile loading (needed for
-real-world map coverage beyond what fits in flash) now that the
-render-side bug is fixed, and separately isolating whether SD-card I/O
-specifically (vs. the full concurrent subsystem load) causes the power
-loss; restoring the rest of `main()`'s subsystems now that this
-narrowed-down test is confirmed working; addressing risk #4 below now
-that real timing numbers exist (they answer it: rendering a real,
-detailed tile is well within the 1Hz redraw budget).
+**Update — `main()` fully restored, plus a new dedicated heavy SD-card
+stress test (`sd_stress_demo.{h,c}`): the power-loss question is now
+resolved with high confidence.** Every subsystem (`led_button_demo()`
+through `usb_demo_start()`) is back, unchanged, just previously left
+uncalled during isolation. The new stress test mounts its own `/SD:`
+volume and, every 500ms, writes then reads back a 32KB buffer —
+deliberately heavier and faster than the original map-loading cadence
+that first showed the power loss (~10KB/1000ms) — specifically to
+re-test the actual originally-crashing configuration: the full subsystem
+set running concurrently with real, sustained SD-card I/O, live map
+redraws included. **Result, ~400-second (6.7 minute) continuous run**:
+461 stress cycles, every one `MATCH` (zero corruption), 185 successful
+map renders, and zero reboots/crashes anywhere — longer than both prior
+crash times, under a harder test than the original failure case. The
+periodic STC3100 power-latch refresh (re-asserted every 5s, not just
+once at boot) is the leading explanation, though not root-caused to a
+specific disturbance mechanism.
+
+**Not yet done**: re-integrating SD-card-backed *tile loading specifically*
+(the map screen itself still renders from tiles embedded in flash,
+`real_route_tiles.h` — proven fine standalone above, but not yet
+re-combined with `map_screen_demo` reading real tiles from the SD card
+the way `sd_stress_demo` proves the card itself can now handle; needed
+for real-world map coverage beyond what fits in flash) and buttons for
+interactive zoom (`button.h`/`Notif.h` still un-ported, per Phase 7).
 
 ## On-device library survey
 
