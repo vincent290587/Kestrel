@@ -327,6 +327,17 @@ plumbing.
    cycles over ~400 seconds, zero corruption, zero reboots — longer than
    both prior crash times. Not an absolute guarantee, but real evidence
    under a harder test than the original failure case.
+7. ~~**Two modules (`map_screen_demo`, `sd_stress_demo`) each held their
+   own persistent `/SD:` mount.**~~ **Resolved 2026-09-06.** Zephyr's fs
+   layer allows only one mount per path at a time (`fs_mount()` returns
+   `-EBUSY` on a second attempt) — whichever module mounted second failed
+   on every boot, silently (the one failing `printk()` was lost in a
+   congested boot-time logging burst), making it look like that module
+   had simply stopped working. Fixed by having both mount/operate/unmount
+   transiently per cycle instead of holding a persistent mount — the same
+   pattern `sd_fat_demo()`/the original `map_demo()` already used safely.
+   A general lesson for any future module that needs `/SD:`: don't assume
+   a persistent mount is free just because one module already has one.
 
 ## Suggested phased plan
 
@@ -351,13 +362,14 @@ plumbing.
    GPS-driven panning/re-centering~~ **done and confirmed on the physical
    panel** — see "Map rendering" below ("I could recognize streets").
    ~~Resolving the power-on-reset question that surfaced along the
-   way~~ **done, high confidence** — see risk #6 above. Still open:
-   re-integrating this with SD-card-backed tile storage specifically
-   (current validation embeds tiles directly in flash, which doesn't
-   scale to a real riding area's worth of map data — the SD card itself
-   is now proven fine under heavy sustained load via `sd_stress_demo`,
-   just not yet wired back into `map_screen_demo`'s own tile loading);
-   buttons for interactive zoom (new input-handling work, not started).
+   way~~ **done, high confidence** — see risk #6 above. ~~Re-integrating
+   this with SD-card-backed tile storage specifically (current
+   validation embeds tiles directly in flash, which doesn't scale to a
+   real riding area's worth of map data)~~ **done** — see "Map rendering"
+   below; `map_screen_demo` now does a real `fs_open()`/`fs_read()` per
+   redraw, validated over 202 real tile loads with zero corruption
+   alongside heavy concurrent SD stress. Still open: buttons for
+   interactive zoom (new input-handling work, not started).
 
 ## Map rendering
 
@@ -497,13 +509,19 @@ periodic STC3100 power-latch refresh (re-asserted every 5s, not just
 once at boot) is the leading explanation, though not root-caused to a
 specific disturbance mechanism.
 
-**Not yet done**: re-integrating SD-card-backed *tile loading specifically*
-(the map screen itself still renders from tiles embedded in flash,
-`real_route_tiles.h` — proven fine standalone above, but not yet
-re-combined with `map_screen_demo` reading real tiles from the SD card
-the way `sd_stress_demo` proves the card itself can now handle; needed
-for real-world map coverage beyond what fits in flash) and buttons for
-interactive zoom (`button.h`/`Notif.h` still un-ported, per Phase 7).
+**Not yet done** *(at the time of that update)*: re-integrating SD-card-backed
+*tile loading specifically* (the map screen itself still rendered from
+tiles embedded in flash, `real_route_tiles.h` — proven fine standalone
+above, but not yet re-combined with `map_screen_demo` reading real tiles
+from the SD card the way `sd_stress_demo` proves the card itself can now
+handle) — since resolved, see below. Buttons for interactive zoom
+(`button.h`/`Notif.h` still un-ported, per Phase 7) remain open.
+
+**Update — `map_screen_demo` wired back to the real SD-card round trip, completing this feature's original design intent.** Rewritten to seed `real_route_tiles.h`'s tile bytes onto `/SD:` once at start, then do a genuine `fs_open()`/`fs_read()` off the card each redraw cycle by the filename `map_tile_name_for()` computes — the direct-from-flash-array shortcut used above for isolation is no longer the live code path.
+
+First attempt surfaced one more real bug: `map_screen_demo.c` and `sd_stress_demo.c` each independently held a **persistent** mount on `"/SD:"` — fine in isolation, but Zephyr's fs layer allows only one mount per path at a time, so whichever module's `fs_mount()` ran second (`sd_stress_demo_start()` runs first in `main()`) failed on every boot, silently, because the one failing `printk()` was lost in the same kind of congested boot-time logging burst this port hit before (Phase 11's GPS RX-dump). `map_screen_demo` looked totally silent for an entire 300-second capture as a result. Fixed by having both mount, do one operation, and unmount again every cycle instead — the transient pattern `sd_fat_demo()`/the original one-shot `map_demo()` already used safely; the two-persistent-mounts design was the actual anomaly.
+
+**Fully validated on real hardware, ~300-second run, full subsystem set plus `sd_stress_demo`'s heavy concurrent I/O**: 202 successful `map_screen` `fs_open()`/`fs_read()` tile loads, correctly split across both real tiles as the route crosses the tile boundary (`tile_2596_223.bin` ×130, `tile_2596_224.bin` ×72), 202 matching renders, 276 `sd_stress` cycles all `MATCH`, zero crashes. The SD-card-backed map path this feature always needed for real-world coverage beyond flash capacity is now proven end-to-end.
 
 ## On-device library survey
 
