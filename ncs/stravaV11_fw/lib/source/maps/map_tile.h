@@ -25,11 +25,16 @@
 extern "C" {
 #endif
 
-#define MAP_TILE_MAGIC     "SV11MAP1"
+#define MAP_TILE_MAGIC     "SV11MAP2"
 #define MAP_TILE_NAME_MAX  32
 
 /* Must match tools/osm_to_tiles.py's TILE_DEG exactly. */
 #define MAP_TILE_DEG 0.02
+
+/* Must match tools/osm_to_tiles.py's ALT_UNKNOWN_M exactly: no ele tag
+ * was available for this point when the tile was generated (true for
+ * most ordinary road/path points -- see that script's docstring). */
+#define MAP_TILE_ALT_UNKNOWN_M (-32768)
 
 enum map_tile_error {
 	MAP_TILE_OK = 0,
@@ -65,12 +70,14 @@ int map_tile_iter_init(struct map_tile_iter *it, const uint8_t *buf, size_t len)
 int map_tile_iter_next(struct map_tile_iter *it, struct map_tile_polyline *out);
 
 /* Decodes point `index` (0-based, < pl->point_count) of a polyline
- * returned by map_tile_iter_next() into absolute lat/lon degrees. `it`
- * must be the same iterator the polyline came from (for the tile
- * origin) -- does not re-validate bounds, callers must respect
- * pl->point_count. */
+ * returned by map_tile_iter_next() into absolute lat/lon degrees plus
+ * altitude in metres (*alt set to MAP_TILE_ALT_UNKNOWN_M, not NAN, when
+ * no ele tag was available for this point -- callers must check for
+ * that sentinel explicitly). `it` must be the same iterator the
+ * polyline came from (for the tile origin) -- does not re-validate
+ * bounds, callers must respect pl->point_count. */
 void map_tile_point_at(const struct map_tile_iter *it, const struct map_tile_polyline *pl,
-			uint16_t index, float *lat, float *lon);
+			uint16_t index, float *lat, float *lon, float *alt);
 
 /* Computes which tile a lat/lon falls in and formats
  * "tile_<lat_idx>_<lon_idx>.bin" into name_out (>= MAP_TILE_NAME_MAX

@@ -144,16 +144,18 @@ own docstring; summary:
   crossing a tile boundary is split into per-tile segments, with the
   boundary point duplicated into both tiles so lines still connect
   visually when tiles are rendered side by side.
-- **On-device format**: fixed-layout little-endian binary (matches the
-  nRF52840's byte order — no swapping needed), points quantized to
-  int16 in 1e-6 degree units relative to each tile's SW corner (~11cm
-  resolution, an order of magnitude finer than the simplification
-  tolerance, so quantization itself isn't a meaningful error source).
-  One flat file per tile, named `tile_<lat_idx>_<lon_idx>.bin` — not
-  8.3-constrained now that `CONFIG_FS_FATFS_LFN` is enabled. The same
-  script has a `--dump <tile.bin>` mode to inspect a tile's contents
-  (parses back to lat/lon and asserts the byte count matches exactly),
-  useful for verifying on-device output later too.
+- **On-device format** (v2, magic `SV11MAP2`): fixed-layout little-endian
+  binary (matches the nRF52840's byte order — no swapping needed), points
+  quantized to int16 lat/lon in 1e-6 degree units relative to each tile's
+  SW corner (~11cm resolution, an order of magnitude finer than the
+  simplification tolerance, so quantization itself isn't a meaningful
+  error source), plus an int16 altitude in whole metres per point (see
+  "Altitude" below). One flat file per tile, named
+  `tile_<lat_idx>_<lon_idx>.bin` — not 8.3-constrained now that
+  `CONFIG_FS_FATFS_LFN` is enabled. The same script has a
+  `--dump <tile.bin>` mode to inspect a tile's contents (parses back to
+  lat/lon/alt and asserts the byte count matches exactly), useful for
+  verifying on-device output later too.
 
 **Validated against a synthetic test PBF** (built with `osmium.SimpleWriter`,
 no network/real-extract dependency needed to test the pipeline logic
@@ -182,6 +184,50 @@ whole-country-scale run would also want the `OSM_Extract`-style
 folder-grouping the library survey documents, not implemented here (a
 flat directory is fine for a single-region test extract).
 
+The synthetic-test-PBF generator itself is now a kept tool too, not just
+a one-off scratch script: `tools/make_test_pbf.py` — needed again for
+the altitude format change below, and will be needed again if the
+format changes further.
+
+## Altitude
+
+The on-device format didn't originally carry elevation. Added per-point
+in format v2 (magic bumped `SV11MAP1` → `SV11MAP2` — a real, deliberate
+break: v1 tiles are not readable by v2 tooling or the v2 parser, since
+nothing has ever shipped real map data yet, there was no reason to
+support both). Real elevation for arbitrary road/path points isn't in
+OSM way data itself — only some tagged nodes (peaks, passes, and
+similar) carry an `ele` tag; getting real elevation *everywhere* would
+need a separate DEM (elevation raster) source sampled per point, a
+materially bigger addition (a new dependency, a DEM file to obtain).
+**Decided against that for now** — `osm_to_tiles.py` sources altitude
+from OSM node `ele` tags where present (real data, zero new
+dependencies) and writes `ALT_UNKNOWN_M` (int16 `-32768`) where absent,
+which is most ordinary points until a DEM step is added later.
+
+Every layer was updated together: the wire format (`POINT_FMT` gained a
+third `i16` field), `map_tile.c`'s parser (`map_tile_point_at()` gained
+an `*alt` out-parameter, passing `MAP_TILE_ALT_UNKNOWN_M` through as-is —
+deliberately not `NAN`, so callers do a plain sentinel comparison rather
+than an `isnan()` check, and so the existing fixed-point `printk()`
+formatting convention this port uses everywhere else doesn't have to
+special-case a non-finite float), and `test_tile_data.h` (regenerated
+from a real tool run, not hand-edited — the test PBF's way B now carries
+a realistic mix: one node with a real integer `ele`, one with a real
+fractional `ele` given as a string ["123.5", rounds to 124 — OSM tag
+values are always strings], one with a garbage non-numeric `ele`, and
+two nodes with no `ele` tag at all, so the test exercises all three real
+cases in one polyline rather than only the all-present or all-absent
+extremes).
+
+**Validated on `native_sim`** (`stravaV11_app`'s smoke test, same
+tolerance-based comparison as lat/lon) **and on real hardware**
+(`stravaV11_fw`'s `map_demo.c`, same seed-then-load-through-the-generic-
+path methodology as before): both report all 5 points' altitude exactly
+matching the offline tool's own byte-level decode —
+`45m, unknown, 124m, unknown, unknown` — with zero regressions in
+lat/lon decoding or any other subsystem running in the same boot.
+
 ## On-device tile parser
 
 `stravaV11_app/lib/source/maps/map_tile.{h,c}` (2026-09-06), validated on
@@ -189,7 +235,7 @@ flat directory is fine for a single-region test extract).
 a whole tile into a float array — RAM is the tightest constraint
 identified in this study, so it's a stateful iterator directly over the
 caller-owned buffer (`map_tile_iter_init()`/`map_tile_iter_next()`),
-decoding one point to float lat/lon at a time via `map_tile_point_at()`,
+decoding one point to float lat/lon/altitude at a time via `map_tile_point_at()`,
 matching this project's existing wire-format-parsing convention
 (`bt_cp_client.c`'s `sys_get_le16()`/`sys_get_le32()`, not a struct
 overlay — portable across alignment/padding rules). Also implements
@@ -222,7 +268,9 @@ tool-generated `tile_2_2.bin` bytes, then loads it back using *only* the
 generic loading path a real GPS-driven lookup would use —
 `map_tile_name_for()` to compute the filename, `fs_open()`/`fs_read()`
 by that name, then `map_tile_iter` parsing — not any special knowledge
-of the buffer the same demo just wrote. On the real board:
+of the buffer the same demo just wrote. On the real board (byte counts below are the original v1, lat/lon-only
+format — the "Altitude" section further down covers the v2 format
+change and its own, separately validated, byte counts):
 `map_demo: fs_mount("/SD:") -> 0`, `seeded /SD:/tile_2_2.bin (44 bytes)`,
 `fs_read() -> 44 bytes`, and all 5 points decoded exactly matching the
 same values already verified on `native_sim` — `lat=0.050000

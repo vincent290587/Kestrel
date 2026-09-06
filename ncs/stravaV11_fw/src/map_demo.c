@@ -44,12 +44,18 @@ static void report_polyline(const struct map_tile_iter *it, const struct map_til
 	       pl->point_count);
 
 	for (uint16_t i = 0; i < pl->point_count; i++) {
-		float lat = 0.f, lon = 0.f;
+		float lat = 0.f, lon = 0.f, alt = 0.f;
 
-		map_tile_point_at(it, pl, i, &lat, &lon);
-		printk("map_demo:   point %u: lat=%d.%06d lon=%d.%06d\n", i, (int)lat,
-		       (int)(fabsf(lat - (int)lat) * 1000000), (int)lon,
-		       (int)(fabsf(lon - (int)lon) * 1000000));
+		map_tile_point_at(it, pl, i, &lat, &lon, &alt);
+		if ((int)alt == MAP_TILE_ALT_UNKNOWN_M) {
+			printk("map_demo:   point %u: lat=%d.%06d lon=%d.%06d alt=unknown\n", i,
+			       (int)lat, (int)(fabsf(lat - (int)lat) * 1000000), (int)lon,
+			       (int)(fabsf(lon - (int)lon) * 1000000));
+		} else {
+			printk("map_demo:   point %u: lat=%d.%06d lon=%d.%06d alt=%dm\n", i, (int)lat,
+			       (int)(fabsf(lat - (int)lat) * 1000000), (int)lon,
+			       (int)(fabsf(lon - (int)lon) * 1000000), (int)alt);
+		}
 	}
 }
 

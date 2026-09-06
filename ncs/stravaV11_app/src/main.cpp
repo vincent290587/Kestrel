@@ -129,16 +129,18 @@ int main(void)
 		bool points_ok = (got == 1) && (pl.point_count == TEST_TILE_EXPECTED_POINT_COUNT);
 
 		for (uint16_t i = 0; points_ok && i < pl.point_count; i++) {
-			float lat = 0.f, lon = 0.f;
+			float lat = 0.f, lon = 0.f, alt = 0.f;
 
-			map_tile_point_at(&it, &pl, i, &lat, &lon);
+			map_tile_point_at(&it, &pl, i, &lat, &lon, &alt);
 			float dlat = lat - test_tile_expected_lat[i];
 			float dlon = lon - test_tile_expected_lon[i];
+			float dalt = alt - test_tile_expected_alt[i];
 
-			if (fabsf(dlat) > 1e-5f || fabsf(dlon) > 1e-5f) {
-				printf("map_tile: point %u MISMATCH: got (%.6f,%.6f) expected (%.6f,%.6f)\n",
-				       i, (double)lat, (double)lon, (double)test_tile_expected_lat[i],
-				       (double)test_tile_expected_lon[i]);
+			if (fabsf(dlat) > 1e-5f || fabsf(dlon) > 1e-5f || fabsf(dalt) > 1e-3f) {
+				printf("map_tile: point %u MISMATCH: got (%.6f,%.6f,%.1f) expected (%.6f,%.6f,%.1f)\n",
+				       i, (double)lat, (double)lon, (double)alt,
+				       (double)test_tile_expected_lat[i], (double)test_tile_expected_lon[i],
+				       (double)test_tile_expected_alt[i]);
 				points_ok = false;
 			}
 		}
