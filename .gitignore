@@ -1,0 +1,15 @@
+# stravaV10 is its own git repo (separate remote/history) checked out as a
+# reference subfolder for this port -- not tracked here.
+/stravaV10/
+
+# Python venv for west/Zephyr tooling.
+/.venv/
+
+# ncs/ is the west workspace: everything in it except our own application
+# (stravaV11_app) is third-party (Zephyr, sdk-nrf, mcuboot, ...), each
+# already its own git checkout managed by `west update`.
+/ncs/*
+!/ncs/stravaV11_app/
+
+# Claude Code session state, not project content.
+/.claude/
