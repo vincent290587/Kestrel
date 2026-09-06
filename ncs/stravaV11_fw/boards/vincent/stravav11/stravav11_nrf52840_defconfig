@@ -1,0 +1,31 @@
+# Phase 11: custom stravaV11 PCB. Unlike the DK, this board has no debug
+# UART broken out separately from the GPS module's own UART (see the .dts
+# comment) -- console/logging goes over RTT via the J-Link probe instead.
+
+CONFIG_ARM_MPU=y
+CONFIG_GPIO=y
+CONFIG_SERIAL=y
+
+CONFIG_UART_CONSOLE=n
+CONFIG_CONSOLE=y
+CONFIG_USE_SEGGER_RTT=y
+CONFIG_RTT_CONSOLE=y
+CONFIG_LOG_BACKEND_RTT=y
+CONFIG_LOG_BACKEND_UART=n
+
+# Default up-buffer (1024B) proved too small under real load: a burst of
+# demo output (qspi/display/gps/ant/ble init all firing within
+# milliseconds of each other) overflowed it faster than the host-side RTT
+# reader could drain it, corrupting/dropping that whole section of the
+# captured log on the first real-hardware run of this board.
+CONFIG_SEGGER_RTT_BUFFER_SIZE_UP=2048
+
+# Buffer 0 (shared by printk/RTT_CONSOLE and the LOG_BACKEND_RTT backend)
+# defaults to NO_BLOCK_SKIP -- silently drops output once the buffer fills
+# rather than waiting for the reader to drain it. That's what caused the
+# remaining truncated tail (BLE/USB init missing) even after the 2048B
+# bump above: this host-side pyocd rtt reader isn't fast/continuous enough
+# to keep up with a burst under skip mode. Blocking trades that for the
+# firmware pausing on RTT writes if no reader is attached at all -- fine
+# for bring-up/debug builds, not appropriate for production.
+CONFIG_SEGGER_RTT_MODE_BLOCK_IF_FIFO_FULL=y

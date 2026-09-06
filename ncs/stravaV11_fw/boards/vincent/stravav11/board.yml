@@ -1,0 +1,6 @@
+board:
+  name: stravav11
+  full_name: stravaV11 custom PCB
+  vendor: vincent
+  socs:
+  - name: nrf52840

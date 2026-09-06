@@ -1,0 +1,8 @@
+# Phase 11: custom stravaV11 PCB defaults.
+
+if BOARD_STRAVAV11
+
+config HW_STACK_PROTECTION
+	default ARCH_HAS_STACK_PROTECTION
+
+endif # BOARD_STRAVAV11

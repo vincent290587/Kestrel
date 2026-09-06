@@ -1,0 +1,209 @@
+/*
+ * Phase 11: first real board definition for the custom stravaV11 PCB
+ * (PROTO_V11 / v3 revision, per stravaV10's custom_board.h/custom_board_v3.h
+ * -- confirmed with the user as the board actually connected). Same nRF52840
+ * SoC as the DK, modeled on nrf52840dk_nrf52840.dts, but every pin
+ * assignment below comes from the real PCB (custom_board_v3.h), not the DK's
+ * Arduino header -- see stravav11_nrf52840-pinctrl.dtsi.
+ *
+ * Deliberately not console = a uart: custom_board_v3.h defines only one
+ * UART pin pair, dedicated to the GPS module (source/sensors/GPSMGMT.cpp) --
+ * there's no separate debug UART broken out on this board. Console/logging
+ * goes over RTT instead (see stravav11_nrf52840_defconfig).
+ */
+
+/dts-v1/;
+#include <nordic/nrf52840_qiaa.dtsi>
+#include <nordic/nrf52840_partition.dtsi>
+#include "stravav11_nrf52840-pinctrl.dtsi"
+
+/ {
+	model = "stravaV11 custom PCB (PROTO_V11)";
+	compatible = "vincent,stravav11-nrf52840";
+
+	chosen {
+		zephyr,display = &ls027;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		/* LED_1, P1.04, active low (LEDS_ACTIVE_STATE 0). */
+		led0: led_0 {
+			gpios = <&gpio1 4 GPIO_ACTIVE_LOW>;
+			label = "Status LED";
+		};
+	};
+
+	buttons {
+		compatible = "gpio-keys";
+
+		/* BUTTON_1/2/3, active low with pull-up (BUTTONS_ACTIVE_STATE 0). */
+		button0: button_0 {
+			gpios = <&gpio0 14 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Button 1";
+		};
+
+		button1: button_1 {
+			gpios = <&gpio0 13 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Button 2";
+		};
+
+		button2: button_2 {
+			gpios = <&gpio0 11 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+			label = "Button 3";
+		};
+	};
+
+	aliases {
+		led0 = &led0;
+		sw0 = &button0;
+		sw1 = &button1;
+		sw2 = &button2;
+		watchdog0 = &wdt0;
+	};
+};
+
+&reg0 {
+	status = "okay";
+};
+
+&reg1 {
+	regulator-initial-mode = <NRF5X_REG_MODE_DCDC>;
+};
+
+&gpiote {
+	status = "okay";
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+/* GPS module (source/sensors/GPSMGMT.cpp), GPS_DEFAULT_SPEED_BAUD.
+ * Labeled arduino_serial (not literally an Arduino pin on this board) only
+ * so main.c's uart_demo(), written for the DK bring-up build, compiles
+ * unchanged against this board too. */
+arduino_serial: &uart1 {
+	status = "okay";
+	current-speed = <9600>;
+	pinctrl-0 = <&uart1_default>;
+	pinctrl-1 = <&uart1_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+/* Sensor bus: bme280, fxos8700, FRAM (mb85rcxx). STC3100/VEML6075 share
+ * this bus too but don't have Zephyr drivers yet -- see CLAUDE.md Phase 3.
+ * Labeled arduino_i2c for the same main.c source-compat reason as
+ * arduino_serial above -- this is not the Arduino header on this board. */
+arduino_i2c: &i2c0 {
+	compatible = "nordic,nrf-twi";
+	status = "okay";
+	pinctrl-0 = <&i2c0_default>;
+	pinctrl-1 = <&i2c0_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	bme280: bme280@76 {
+		compatible = "bosch,bme280";
+		reg = <0x76>;
+	};
+
+	fxos8700: fxos8700@1e {
+		compatible = "nxp,fxos8700";
+		reg = <0x1e>;
+		/* FXOS_INT1 / FXOS_RST from custom_board_v3.h. */
+		int1-gpios = <&gpio1 2 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&gpio1 3 GPIO_ACTIVE_HIGH>;
+	};
+
+	fram: mb85rc@50 {
+		compatible = "fujitsu,mb85rcxx";
+		reg = <0x50>;
+		size = <2048>;
+		address-width = <8>;
+	};
+};
+
+/* LS027 display, LS027_CS_PIN as a plain GPIO chip-select. */
+&spi2 {
+	compatible = "nordic,nrf-spi";
+	status = "okay";
+	cs-gpios = <&gpio0 17 GPIO_ACTIVE_LOW>;
+	pinctrl-0 = <&spi2_default>;
+	pinctrl-1 = <&spi2_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	ls027: ls0xx@0 {
+		compatible = "sharp,ls0xx";
+		reg = <0>;
+		spi-max-frequency = <2000000>;
+		width = <400>;
+		height = <240>;
+		serial-vcom-inversion;
+		serial-vcom-interval = <1000>;
+	};
+};
+
+/* SD card, SDC_CS_PIN as a plain GPIO chip-select. */
+sd_spi: &spi1 {
+	compatible = "nordic,nrf-spi";
+	status = "okay";
+	cs-gpios = <&gpio0 26 GPIO_ACTIVE_LOW>;
+	pinctrl-0 = <&spi1_default>;
+	pinctrl-1 = <&spi1_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	sdcard: sdhc@0 {
+		compatible = "zephyr,sdhc-spi-slot";
+		reg = <0>;
+		status = "okay";
+		spi-max-frequency = <4000000>;
+
+		sdmmc {
+			compatible = "zephyr,sdmmc-disk";
+			disk-name = "SD";
+			status = "okay";
+		};
+	};
+};
+
+/* External QSPI NOR: MT25QL128 (libraries/SST/mt25.c), JEDEC ID 20 BA 18 --
+ * a different chip from the DK's on-board MX25R6435F (Phase 4). Kept
+ * single-line SPI mode (default readoc/writeoc, quad-enable-requirements =
+ * NONE so the driver never touches the QE bit) for this first bring-up on
+ * real, never-before-flashed hardware -- quad I/O is a later optimization,
+ * not needed to prove the chip works. */
+&qspi {
+	status = "okay";
+	pinctrl-0 = <&qspi_default>;
+	pinctrl-1 = <&qspi_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	/* Labeled mx25r64 (the DK's actual chip, not this board's) for the
+	 * same main.c source-compat reason as arduino_i2c/arduino_serial
+	 * above -- the real chip here is MT25QL128, see jedec-id below. */
+	mx25r64: mt25ql128@0 {
+		compatible = "nordic,qspi-nor";
+		reg = <0>;
+		sck-frequency = <8000000>;
+		jedec-id = [20 ba 18];
+		size = <134217728>;
+		quad-enable-requirements = "NONE";
+	};
+};
+
+zephyr_udc0: &usbd {
+	compatible = "nordic,nrf-usbd";
+	status = "okay";
+
+	/* Phase 9 CDC-ACM: usb_demo.c's DEVICE_DT_GET_ONE(zephyr_cdc_acm_uart)
+	 * needs this child node, same as the DK overlay. */
+	cdc_acm_uart0: cdc_acm_uart0 {
+		compatible = "zephyr,cdc-acm-uart";
+		label = "stravaV11 CDC-ACM";
+	};
+};

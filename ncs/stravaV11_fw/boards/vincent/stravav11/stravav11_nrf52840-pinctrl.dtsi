@@ -1,0 +1,112 @@
+/*
+ * Phase 11: pin assignments taken directly from stravaV10's
+ * custom_board_v3.h (the PROTO_V11 revision -- confirmed with the user as
+ * the board actually connected). Unlike the nrf52840dk pinctrl this mirrors
+ * the structure of, none of these pins are shared with any DK convention --
+ * they're the real PCB traces.
+ */
+
+&pinctrl {
+	i2c0_default: i2c0_default {
+		group1 {
+			/* SDA_PIN_NUMBER / SCL_PIN_NUMBER */
+			psels = <NRF_PSEL(TWIM_SDA, 1, 0)>,
+				<NRF_PSEL(TWIM_SCL, 1, 1)>;
+		};
+	};
+
+	i2c0_sleep: i2c0_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 0)>,
+				<NRF_PSEL(TWIM_SCL, 1, 1)>;
+			low-power-enable;
+		};
+	};
+
+	/* LS027 display -- LS027_SCK_PIN / LS027_MOSI_PIN. Write-only (no
+	 * MISO): stravaV10's own ls027.c never reads from this bus either. */
+	spi2_default: spi2_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 0, 15)>,
+				<NRF_PSEL(SPIM_MOSI, 0, 16)>;
+		};
+	};
+
+	spi2_sleep: spi2_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 0, 15)>,
+				<NRF_PSEL(SPIM_MOSI, 0, 16)>;
+			low-power-enable;
+		};
+	};
+
+	/* SD card -- SDC_SCK_PIN / SDC_MOSI_PIN / SDC_MISO_PIN. */
+	spi1_default: spi1_default {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 0, 27)>,
+				<NRF_PSEL(SPIM_MOSI, 0, 25)>,
+				<NRF_PSEL(SPIM_MISO, 0, 28)>;
+		};
+	};
+
+	spi1_sleep: spi1_sleep {
+		group1 {
+			psels = <NRF_PSEL(SPIM_SCK, 0, 27)>,
+				<NRF_PSEL(SPIM_MOSI, 0, 25)>,
+				<NRF_PSEL(SPIM_MISO, 0, 28)>;
+			low-power-enable;
+		};
+	};
+
+	/* External QSPI NOR (MT25QL128, libraries/SST/mt25.c) --
+	 * QSPI_SCK/MOSI/MISO/IO2/IO3/SS_PIN. MOSI->IO0, MISO->IO1. */
+	qspi_default: qspi_default {
+		group1 {
+			psels = <NRF_PSEL(QSPI_SCK, 0, 18)>,
+				<NRF_PSEL(QSPI_IO0, 0, 19)>,
+				<NRF_PSEL(QSPI_IO1, 0, 24)>,
+				<NRF_PSEL(QSPI_IO2, 0, 23)>,
+				<NRF_PSEL(QSPI_IO3, 0, 21)>,
+				<NRF_PSEL(QSPI_CSN, 0, 22)>;
+			nordic,drive-mode = <NRF_DRIVE_H0H1>;
+		};
+	};
+
+	qspi_sleep: qspi_sleep {
+		group1 {
+			psels = <NRF_PSEL(QSPI_SCK, 0, 18)>,
+				<NRF_PSEL(QSPI_IO0, 0, 19)>,
+				<NRF_PSEL(QSPI_IO1, 0, 24)>,
+				<NRF_PSEL(QSPI_IO2, 0, 23)>,
+				<NRF_PSEL(QSPI_IO3, 0, 21)>;
+			low-power-enable;
+		};
+
+		group2 {
+			psels = <NRF_PSEL(QSPI_CSN, 0, 22)>;
+			low-power-enable;
+			bias-pull-up;
+		};
+	};
+
+	/* GPS module UART -- TX_PIN_NUMBER / RX_PIN_NUMBER. GPS_R/GPS_S/
+	 * FIX_PIN (reset/standby/fix-detect) aren't wired up yet -- same
+	 * deferral as GPSMGMT's hardware layer in Phase 6. */
+	uart1_default: uart1_default {
+		group1 {
+			psels = <NRF_PSEL(UART_TX, 0, 5)>;
+		};
+		group2 {
+			psels = <NRF_PSEL(UART_RX, 0, 7)>;
+			bias-pull-up;
+		};
+	};
+
+	uart1_sleep: uart1_sleep {
+		group1 {
+			psels = <NRF_PSEL(UART_TX, 0, 5)>,
+				<NRF_PSEL(UART_RX, 0, 7)>;
+			low-power-enable;
+		};
+	};
+};

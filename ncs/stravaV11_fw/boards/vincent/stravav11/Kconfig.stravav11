@@ -1,0 +1,4 @@
+# Phase 11: custom stravaV11 PCB, nRF52840-QIAA (same package as the DK).
+
+config BOARD_STRAVAV11
+	select SOC_NRF52840_QIAA

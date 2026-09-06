@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.20.0)
 
+# Phase 11: the real custom PCB's board definition lives under boards/ in
+# this app (boards/vincent/stravav11/) -- add it to BOARD_ROOT so
+# `-b stravav11/nrf52840` resolves, alongside the built-in nrf52840dk board
+# still used for DK bring-up.
+list(APPEND BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
+
 # sdk-ant is a license-gated vendor SDK, not in our west manifest -- see
 # stravaV11_ant/CMakeLists.txt and CLAUDE.md for why ZEPHYR_EXTRA_MODULES
 # rather than a manifest import.
