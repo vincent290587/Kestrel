@@ -22,6 +22,8 @@
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/eeprom.h>
 #include <zephyr/drivers/display.h>
+#include <zephyr/drivers/flash.h>
+#include <zephyr/storage/disk_access.h>
 #include <zephyr/sys/printk.h>
 
 static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
@@ -107,6 +109,60 @@ static void fram_demo(void)
 	printk("eeprom_write() -> %d\n", err);
 }
 
+static void disk_raw_ioctl_demo(const char *name)
+{
+	int err = disk_access_ioctl(name, DISK_IOCTL_CTRL_INIT, NULL);
+
+	if (err != 0) {
+		printk("disk %s: init -> %d\n", name, err);
+		return;
+	}
+
+	uint32_t block_count = 0, block_size = 0;
+	disk_access_ioctl(name, DISK_IOCTL_GET_SECTOR_COUNT, &block_count);
+	disk_access_ioctl(name, DISK_IOCTL_GET_SECTOR_SIZE, &block_size);
+	printk("disk %s: init ok, %u sectors x %u bytes\n", name, block_count, block_size);
+	disk_access_ioctl(name, DISK_IOCTL_CTRL_DEINIT, NULL);
+}
+
+static void qspi_flash_demo(void)
+{
+	/* Real, populated hardware: erase/write/read/verify directly against
+	 * the DK's on-board mx25r64 QSPI NOR chip (see the overlay for why
+	 * this is the direct flash API rather than disk_access/FAT). */
+	const struct device *flash = DEVICE_DT_GET(DT_NODELABEL(mx25r64));
+
+	if (!device_is_ready(flash)) {
+		printk("mx25r64: not ready\n");
+		return;
+	}
+
+	static const uint8_t pattern[16] = {
+		0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x11, 0x22, 0x33,
+		0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB,
+	};
+	uint8_t readback[sizeof(pattern)] = { 0 };
+
+	int err = flash_erase(flash, 0, 4096);
+	printk("mx25r64: flash_erase() -> %d\n", err);
+
+	err = flash_write(flash, 0, pattern, sizeof(pattern));
+	printk("mx25r64: flash_write() -> %d\n", err);
+
+	err = flash_read(flash, 0, readback, sizeof(readback));
+	printk("mx25r64: flash_read() -> %d, %s\n", err,
+	       memcmp(pattern, readback, sizeof(pattern)) == 0 ? "MATCH" : "MISMATCH");
+}
+
+static void storage_demo(void)
+{
+	/* SD card: no card/slot on this DK (see the overlay) -- this just
+	 * proves the driver reports a clean error instead of hanging. */
+	disk_raw_ioctl_demo("SD");
+
+	qspi_flash_demo();
+}
+
 #if DT_HAS_CHOSEN(zephyr_display)
 static void display_demo(void)
 {
@@ -153,6 +209,7 @@ int main(void)
 	sensor_demo("bme280", DEVICE_DT_GET(DT_NODELABEL(bme280)));
 	sensor_demo("fxos8700", DEVICE_DT_GET(DT_NODELABEL(fxos8700)));
 	fram_demo();
+	storage_demo();
 	display_demo();
 
 	printk("=== bring-up smoke test done ===\n");

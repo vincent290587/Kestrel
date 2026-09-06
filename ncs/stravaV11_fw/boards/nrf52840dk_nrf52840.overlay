@@ -21,7 +21,10 @@
 
 &arduino_spi {
 	status = "okay";
-	cs-gpios = <&arduino_header ARDUINO_HEADER_R3_D10 GPIO_ACTIVE_HIGH>;
+	/* index 0 -> ls027 (D10), index 1 -> SD card (D9), both placeholder
+	 * pins -- see the Phase 4 storage note further down. */
+	cs-gpios = <&arduino_header ARDUINO_HEADER_R3_D10 GPIO_ACTIVE_HIGH>,
+		   <&arduino_header ARDUINO_HEADER_R3_D9 GPIO_ACTIVE_LOW>;
 
 	ls027: ls0xx@0 {
 		compatible = "sharp,ls0xx";
@@ -31,6 +34,28 @@
 		height = <240>;
 		serial-vcom-inversion;
 		serial-vcom-interval = <1000>;
+	};
+
+	/*
+	 * Phase 4 storage, SD card half: stravaV10 talks to a real SD card
+	 * over SPI (source/sd/diskio_sdc.c, the old nRF5 SDK's
+	 * nrf_block_dev_sdc component). No card or slot is physically
+	 * present on this DK, so -- same as the display -- this only proves
+	 * the zephyr,sdhc-spi-slot driver initializes and reports a clean
+	 * error rather than hanging; it can't be validated further until a
+	 * card is actually inserted.
+	 */
+	sdcard: sdhc@1 {
+		compatible = "zephyr,sdhc-spi-slot";
+		reg = <1>;
+		status = "okay";
+		spi-max-frequency = <4000000>;
+
+		sdmmc {
+			compatible = "zephyr,sdmmc-disk";
+			disk-name = "SD";
+			status = "okay";
+		};
 	};
 };
 
@@ -68,3 +93,26 @@
 		address-width = <8>;
 	};
 };
+
+/*
+ * Phase 4 storage, QSPI flash half: unlike everything above, this DK has a
+ * *real* on-board QSPI NOR flash chip (MX25R6435F, 64Mbit), already wired up
+ * and enabled by the DK's own default devicetree (&qspi / mx25r64 in
+ * nrf52840dk_nrf52840.dts) -- no overlay needed to reach it. stravaV10's own
+ * external flash is a different chip (MT25QL128 over QSPI,
+ * libraries/SST/mt25.c) but the same JEDEC SPI-NOR protocol family, so
+ * exercising this one via the plain Zephyr flash API (see storage_demo() in
+ * main.c) is a real, hardware-validated stand-in for that storage path.
+ *
+ * Originally tried layering a zephyr,flash-disk + FAT filesystem on top (to
+ * mirror stravaV10's actual FatFs usage), same as the fs_sample sample does
+ * for internal flash. That hit an NCS-specific wall: this workspace's
+ * Partition Manager is unconditionally active for any app built here (its
+ * Kconfig is described as "read-only, do not change" -- it isn't a toggle),
+ * and flashdisk.c's build only works for partitions PM itself allocated and
+ * tagged with "disk" affiliation metadata; a hand-written devicetree
+ * fixed-partitions node isn't visible to that scan, which is a real,
+ * separate follow-up (a pm_static.yml would be the fix) rather than
+ * something to force through here. Direct flash_erase/write/read against
+ * mx25r64 sidesteps flashdisk.c entirely and still proves the chip works.
+ */
