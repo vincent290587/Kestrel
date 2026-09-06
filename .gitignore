@@ -5,11 +5,12 @@
 # Python venv for west/Zephyr tooling.
 /.venv/
 
-# ncs/ is the west workspace: everything in it except our own application
-# (stravaV11_app) is third-party (Zephyr, sdk-nrf, mcuboot, ...), each
-# already its own git checkout managed by `west update`.
+# ncs/ is the west workspace: everything in it except our own applications
+# (stravaV11_app, stravaV11_fw) is third-party (Zephyr, sdk-nrf, mcuboot,
+# ...), each already its own git checkout managed by `west update`.
 /ncs/*
 !/ncs/stravaV11_app/
+!/ncs/stravaV11_fw/
 
 # Claude Code session state, not project content.
 /.claude/

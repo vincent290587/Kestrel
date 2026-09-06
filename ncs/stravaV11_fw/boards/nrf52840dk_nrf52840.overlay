@@ -1,0 +1,35 @@
+/*
+ * Phase 2 DK bring-up wiring: the LS027 isn't attached to this DK (see
+ * CLAUDE.md) -- this puts it on the Arduino-header SPI bus (spi3) at
+ * arbitrary pins, purely so the sharp,ls0xx driver + display subsystem
+ * builds, initializes, and runs its SPI transactions without error. Real
+ * pin assignments come back when the custom PCB's own board definition is
+ * written (a later phase); nothing here should be read as the final wiring.
+ *
+ * width/height (400x240) and serial-vcom-inversion (no EXTCOMIN pin) match
+ * stravaV10's own drivers/lcd/ls027.c, which toggles VCOM in-band over SPI
+ * rather than via a dedicated EXTCOMIN GPIO.
+ */
+
+#include <zephyr/dt-bindings/gpio/arduino-header-r3.h>
+
+/ {
+	chosen {
+		zephyr,display = &ls027;
+	};
+};
+
+&arduino_spi {
+	status = "okay";
+	cs-gpios = <&arduino_header ARDUINO_HEADER_R3_D10 GPIO_ACTIVE_HIGH>;
+
+	ls027: ls0xx@0 {
+		compatible = "sharp,ls0xx";
+		reg = <0>;
+		spi-max-frequency = <2000000>;
+		width = <400>;
+		height = <240>;
+		serial-vcom-inversion;
+		serial-vcom-interval = <1000>;
+	};
+};

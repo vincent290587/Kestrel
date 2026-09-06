@@ -87,3 +87,21 @@ Three things worth knowing if you touch this again:
 - **Adapters for the two real hardware calls this tier still makes**, in `stravaV11_app/adapters/`: `notifications_segNotify()` (drives the WS2812 status LED from `SegmentManager`) no-ops; `fram_read_block()`/`fram_write_block()` (from `UserSettings::sync()`/`writeConfig()`) return `false`, so settings never persist and always fall back to `resetConfig()`'s in-memory defaults. Both get replaced for real once the LED and FRAM driver phases happen. `ant_device_manager.h` here is also a placeholder — just the four default ANT device-number constants `UserSettings::resetConfig()` needs, not the real header (which pulls in the full ANT stack via `ant.h`).
 
 Not part of this slice, and why: `Model.cpp` (the hardware/connectivity orchestrator), `Boucle*.cpp` (ride-mode controllers — `Boucle.cpp` itself pulls in the task manager, global `vue`/`stc` objects, and `g_structs`-based error state; `BoucleFEC.cpp` pulls in ANT+ FE-C and BLE), `Attitude.cpp`/`Locator.cpp` (need the FXOS sensor driver and TinyGPS++ integration respectively), `UserSettings`'s FRAM persistence, and all connectivity (`ble_services`, `ant_profiles`) — these need actual driver/connectivity phases first, per the phased plan.
+
+#### Phase 2 status: DK driver bring-up (in progress)
+
+`stravaV11_fw/` is a second, separate application (not merged into `stravaV11_app`) for hardware bring-up on the nRF52840-DK: GPIO/LED/button and the LS027 display. It's kept separate because it depends on DK-specific devicetree (an `&arduino_spi` node, a `zephyr,display` chosen node) that doesn't exist on `native_sim` — mixing it into the native_sim-validated logic app would break that app's portability. The two apps get merged once both are mature.
+```
+west build -p always -b nrf52840dk/nrf52840 stravaV11_fw -d <build-dir>
+west flash --build-dir <build-dir>
+```
+
+Key finding: **Zephyr already has an upstream driver for this exact display.** `zephyr/drivers/display/ls0xx.c` (devicetree compatible `sharp,ls0xx`) explicitly lists `LS027B7DH01A` as supported hardware, and its binding's `serial-vcom-inversion` property matches stravaV10's own `drivers/lcd/ls027.c` approach (VCOM toggled in-band over SPI, no EXTCOMIN pin) — so no custom driver was needed, just a devicetree overlay (`stravaV11_fw/boards/nrf52840dk_nrf52840.overlay`) wiring a `sharp,ls0xx` child node (400x240, `serial-vcom-inversion`) onto the DK's Arduino-header SPI bus (`arduino_spi`/spi3). There's also a matching Zephyr shield (`boards/shields/ls0xx_generic`) but it defaults to a different variant (128x128, hardware EXTCOMIN) — not a match for our wiring, hence the hand-written overlay instead of `-DSHIELD=`.
+
+**Validated on real hardware** (bare DK, nothing external attached — see [[project_port_scope]]/CLAUDE.md decisions):
+- GPIO: on-board LED toggling and button read.
+- UART: implicitly proven the whole time — the console itself is over UART (J-Link's CDC-ACM bridge).
+- I2C: a full 0x08-0x77 address scan on `arduino_i2c` (i2c0) comes back as 112 clean NACKs, 0 ACKs — expected with no sensor attached, and importantly the bus completes every transaction rather than hanging.
+- SPI + display: the display subsystem initializes (`spi_is_ready_dt()` passes — it only checks the SPI *controller*, not a peripheral handshake, so this succeeds even with nothing wired to the bus) and `display_write()` returns 0 for a full-frame test pattern.
+
+**Not validated, and can't be until the display is physically wired up:** that the SPI protocol framing actually produces correct pixels on real glass, or the exact pin assignment (the overlay's pins are arbitrary DK Arduino-header pins, explicitly not the final custom-PCB mapping — that comes in the later custom-PCB bring-up phase). Phase 2 is otherwise done.
