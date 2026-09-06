@@ -23,6 +23,7 @@
 #include <zephyr/drivers/eeprom.h>
 #include <zephyr/drivers/display.h>
 #include <zephyr/drivers/flash.h>
+#include <zephyr/drivers/uart.h>
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/sys/printk.h>
 
@@ -166,6 +167,37 @@ static void storage_demo(void)
 	qspi_flash_demo();
 }
 
+static void uart_demo(void)
+{
+	/* Phase 6: GPS module UART (arduino_serial/uart1, see the overlay).
+	 * No GPS module attached -- proves TX completes and RX doesn't hang,
+	 * not that anything is received (nothing there to send). */
+	const struct device *uart = DEVICE_DT_GET(DT_NODELABEL(arduino_serial));
+
+	if (!device_is_ready(uart)) {
+		printk("arduino_serial: not ready\n");
+		return;
+	}
+
+	static const char msg[] = "$PMTK220,200*2C\r\n"; /* stravaV10's actual fix-interval cmd format */
+
+	for (size_t i = 0; i < sizeof(msg) - 1; i++) {
+		uart_poll_out(uart, msg[i]);
+	}
+	printk("arduino_serial: TX complete (%u bytes)\n", (unsigned)(sizeof(msg) - 1));
+
+	unsigned char rx;
+	int rx_count = 0;
+
+	for (int i = 0; i < 1000; i++) {
+		if (uart_poll_in(uart, &rx) == 0) {
+			rx_count++;
+		}
+	}
+	printk("arduino_serial: RX poll clean, %d bytes received (0 expected, nothing attached)\n",
+	       rx_count);
+}
+
 #if DT_HAS_CHOSEN(zephyr_display)
 static void display_demo(void)
 {
@@ -214,6 +246,7 @@ int main(void)
 	fram_demo();
 	storage_demo();
 	display_demo();
+	uart_demo();
 	ant_demo_start();
 	ble_demo_start();
 

@@ -1,16 +1,19 @@
 /*
- * Phase 1 smoke test: exercises the hardware-agnostic slice of stravaV10's
+ * Phase 1/6 smoke test: exercises the hardware-agnostic slice of stravaV10's
  * business logic (routes/geometry, power/HR zone binning, the order-1
- * filter, and the Komoot icon lookup) ported to build under Zephyr.
+ * filter, the Komoot icon lookup, and now GPS/NMEA decode via TinyGPS++ +
+ * Locator) ported to build under Zephyr.
  *
  * This is deliberately not a ztest suite yet -- the goal here is proving the
  * code builds and runs correctly on native_sim before investing in a real
- * test harness. Model.cpp, Boucle*, Attitude/Locator/UserSettings are not
- * part of this slice -- they're coupled to hardware/connectivity that
- * hasn't been ported yet (see CLAUDE.md).
+ * test harness. Model.cpp, Boucle*, Attitude/UserSettings' FRAM persistence,
+ * and GPSMGMT's real UART/hardware layer are not part of this slice --
+ * they're coupled to hardware/connectivity that hasn't been ported yet (see
+ * CLAUDE.md).
  */
 
 #include <cstdio>
+#include <cstring>
 
 #include "Segment.h"
 #include "PowerZone.h"
@@ -18,6 +21,7 @@
 #include "order1_filter.h"
 #include "komoot_nav.h"
 #include "UserSettings.h"
+#include "Locator.h"
 
 extern UserSettings u_settings;
 
@@ -77,6 +81,27 @@ int main(void)
 	const uint8_t *icon0 = komoot_nav_get_icon(0);
 	const uint8_t *icon1 = komoot_nav_get_icon(1);
 	printf("komoot icons: dir0=%p dir1=%p\n", (const void *)icon0, (const void *)icon1);
+
+	// --- Locator/TinyGPS++: feed real NMEA sentences character-by-character,
+	// same as gps_encode_char() would from a live UART stream, and check the
+	// decoded position comes out correctly. Sentences are TinyGPSPlus's own
+	// well-known test fix (from its FullExample), not invented here.
+	Locator locator;
+	locator.init();
+
+	static const char nmea[] =
+		"$GPRMC,045103.000,A,3014.1984,N,09749.2872,W,0.67,161.46,171015,,,A*77\r\n"
+		"$GPGGA,045104.000,3014.1985,N,09749.2873,W,1,09,1.2,211.6,M,-22.5,M,,0000*62\r\n";
+
+	for (size_t i = 0; i < strlen(nmea); i++) {
+		locator_encode_char(nmea[i]);
+	}
+
+	SLoc loc = {};
+	SDate date = {};
+	eLocationSource src = locator.getPosition(loc, date);
+	printf("Locator source=%d lat=%.4f lon=%.4f speed=%.2f\n", (int)src, (double)loc.lat,
+	       (double)loc.lon, (double)loc.speed);
 
 	printf("=== smoke test done ===\n");
 	return 0;

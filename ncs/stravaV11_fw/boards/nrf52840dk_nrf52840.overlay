@@ -60,6 +60,22 @@
 };
 
 /*
+ * Phase 6 GPS bring-up: stravaV10 talks to the GlobalTop GPS module over a
+ * dedicated UART (source/sensors/GPSMGMT.cpp), starting at 9600 baud
+ * (GPS_DEFAULT_SPEED_BAUD) before switching to 115200. arduino_serial
+ * (uart1) is disabled by default on this DK (unlike arduino_i2c/spi), so it
+ * needs enabling here. No GPS module is attached -- same placeholder
+ * caveat as the rest of this file; this only proves the UART peripheral
+ * itself works (TX completes, RX doesn't hang). GPS_R/GPS_S/FIX_PIN
+ * (reset/standby/fix-detect GPIOs) aren't wired up yet -- deferred with the
+ * rest of GPSMGMT's hardware layer, same reasoning as Model.cpp in Phase 1.
+ */
+&arduino_serial {
+	status = "okay";
+	current-speed = <9600>;
+};
+
+/*
  * Phase 3 sensor bring-up, same caveat as above: nothing is physically
  * attached to this DK, so these addresses/wiring are placeholders (matching
  * stravaV10's actual addresses, which is all that matters for now) purely so

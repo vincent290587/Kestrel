@@ -30,6 +30,7 @@ target_include_directories(app PRIVATE
   ${LIB_ROOT}/libraries/VParser
   ${LIB_ROOT}/libraries/komoot
   ${LIB_ROOT}/libraries/filters
+  ${LIB_ROOT}/libraries/TinyGPSPlus
   ${ADAPTERS_ROOT}
 )
 
@@ -44,6 +45,7 @@ target_sources(app PRIVATE
   ${LIB_ROOT}/source/model/RRZone.cpp
   ${LIB_ROOT}/source/model/SufferScore.cpp
   ${LIB_ROOT}/source/model/UserSettings.cpp
+  ${LIB_ROOT}/source/model/Locator.cpp
   ${LIB_ROOT}/source/display/SegmentManager.cpp
   ${LIB_ROOT}/source/display/Zoom.cpp
   ${LIB_ROOT}/libraries/utils/utils.c
@@ -53,7 +55,10 @@ target_sources(app PRIVATE
   ${LIB_ROOT}/libraries/VParser/VParser.cpp
   ${LIB_ROOT}/libraries/komoot/komoot_nav.c
   ${LIB_ROOT}/libraries/filters/order1_filter_tdd.c
+  ${LIB_ROOT}/libraries/TinyGPSPlus/TinyGPS++.cpp
   ${ADAPTERS_ROOT}/fram_stub.c
+  ${ADAPTERS_ROOT}/gps_mgmt_stub.cpp
+  ${ADAPTERS_ROOT}/millis_zephyr.c
   src/notifications_stub.c
   src/globals.cpp
   src/main.cpp
