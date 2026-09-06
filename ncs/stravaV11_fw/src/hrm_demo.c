@@ -35,15 +35,18 @@ LOG_MODULE_REGISTER(hrm_demo, LOG_LEVEL_INF);
 
 #define HRM_CHANNEL_NUMBER      2
 #define HRM_NETWORK_NUMBER      0 /* ANTPLUS_NETWORK_NUMBER in stravaV10 */
-/* Wildcard (0), not stravaV10's hardcoded HRM_DEVICE_NUMBER (17334U, from
- * rf/ant_device_manager.h -- presumably whatever specific strap the
- * original developer had paired). This port has no real pairing/discovery
- * UI yet (ant_device_manager.cpp isn't ported -- see CLAUDE.md Phase 5),
- * so a fixed device number would never match a real strap unless it
- * happened to share that exact ID. ant_evt_hrm() already logs "HRM paired
- * with device %u" via ant_channel_id_get() once a wildcard search finds
- * one -- that's the number a future real pairing UI would persist. */
-#define HRM_DEVICE_NUMBER       0
+/* The user's real strap's ANT+ device ID, discovered via a wildcard search
+ * (0) and confirmed working end-to-end on real hardware -- see CLAUDE.md
+ * Phase 11 ("HRM paired with device 47359"). Replaces both stravaV10's
+ * original hardcoded HRM_DEVICE_NUMBER (17334U, rf/ant_device_manager.h --
+ * presumably whatever specific strap the original developer had paired)
+ * and the temporary wildcard used to discover this one. Locking to a known
+ * device pairs faster/more deterministically than an open wildcard search
+ * would in an environment with other nearby ANT+ HRM broadcasters. This
+ * port still has no real pairing/discovery UI (ant_device_manager.cpp
+ * isn't ported -- see CLAUDE.md Phase 5), so changing straps means editing
+ * this constant by hand, same as stravaV10's own approach. */
+#define HRM_DEVICE_NUMBER       47359U
 #define WILDCARD_TRANSMISSION_TYPE 0
 
 HRM_DISP_CHANNEL_CONFIG_DEF(m_hrm, HRM_CHANNEL_NUMBER, WILDCARD_TRANSMISSION_TYPE,
