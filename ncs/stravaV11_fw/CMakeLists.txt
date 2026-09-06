@@ -28,6 +28,8 @@ target_sources(app PRIVATE
   src/main.c
   src/ble_demo.c
   src/ant_demo.c
+  src/hrm_demo.c
+  src/bsc_demo.c
   src/gfx_demo.cpp
   src/task_demo.c
   src/power_demo.c

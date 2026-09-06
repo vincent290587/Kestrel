@@ -29,6 +29,8 @@
 
 #include "ble_demo.h"
 #include "ant_demo.h"
+#include "hrm_demo.h"
+#include "bsc_demo.h"
 #include "gfx_demo.h"
 #include "task_demo.h"
 #include "power_demo.h"
@@ -254,6 +256,8 @@ int main(void)
 	gfx_demo();
 	uart_demo();
 	ant_demo_start();
+	hrm_demo_start();
+	bsc_demo_start();
 	ble_demo_start();
 	task_demo_start();
 	power_demo_start();

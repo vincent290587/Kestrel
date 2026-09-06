@@ -171,6 +171,32 @@ The user obtained ANT+ Adopter access and downloaded `sdk-ant-2.1.1` (from `gith
 
 **Likely shape of a future ANT+ profiles phase**, based on the above: HRM and BSC are fairly quick wins (reuse sdk-ant's libraries, same pattern as `bt_cp_client`); FE-C is the harder piece (custom/carried-over port, no upstream library); glasses.c needs a "do we still want this" check before any porting effort.
 
+**Update 2026-09-06 — HRM and BSC ported and validated on real hardware**, in `stravaV11_fw/src/hrm_demo.{h,c}` and `bsc_demo.{h,c}`. Faithful ports of stravaV10's `rf/hrm.c`/`rf/bsc.c` onto `ant/lib/ant_profiles/ant_hrm`/`ant_bsc` — field/macro names (`page_0.computed_heart_rate`, `BSC_PROFILE_speed_rev_count`, ...) matched exactly, both stravaV10's and sdk-ant's profile code ultimately descending from the same historical Nordic `ant_profiles` codebase. Integration pattern (channel config macros, `ant_plus_key_set()`, event handler registration) follows sdk-ant's own reference samples, `ant/samples/ant_plus/ant_hrm/hrm_rx` and `ant_bsc/bsc_rx`.
+
+Kept from stravaV10: the exact device numbers from `rf/ant_device_manager.h` (`HRM_DEVICE_NUMBER=17334`, `BSC_DEVICE_NUMBER=15568`, `BSC_DEVICE_TYPE=0x79` combined), the RR-interval calculation (`ant_hrm_evt_handler`'s single-beat-delta check before trusting `page_4.prev_beat`), BSC's rollover-aware speed/cadence accumulation (`calculate_speed`/`calculate_cadence`), the reconnect-on-close behavior (up to 5 retries via `ant_hrm_disp_open`/`ant_bsc_disp_open`), and the 200 rpm / 150 kph sanity caps stravaV10 added on top of sdk-ant's own `bsc_rx` sample (which has no such caps). Channel numbering: `ant_demo.c`'s wildcard channel stays on channel 0; HRM is channel 2, BSC is channel 1 (same numbers stravaV10 used), both on network 0 alongside the wildcard channel — `ant_plus_key_set(0)` programs the real ANT+ Network Key for that network once, shared by all three channels.
+
+Not ported: stravaV10's optional `USE_ANT_SEARCH` block (custom low-priority search tuning) — sdk-ant's channel defaults are used as-is. Not adopted: the `hrm_rx`/`bsc_rx` samples' `ant_state_indicator`/`dk_buttons_and_leds` LED-status helpers, to stay consistent with this port's existing plain-`LOG_INF` demo style. Not wired up: stravaV10's `g_structs.h` `hrm_info`/`bsc_info` globals — `Model.cpp` isn't ported into `stravaV11_fw` yet, so both demos just log the computed values (bpm/RR, speed/cadence) directly.
+
+**Bug found and fixed while porting**: stravaV10's own `SPEED_COEFFICIENT` (`rf/bsc.c`) doesn't divide by `BSC_MM_TO_M_FACTOR` (1000) — dimensionally wrong, since `WHEEL_CIRCUMFERENCE` is in mm, so the un-divided coefficient computes a speed 1000x too large. Verified by unit derivation (`km/h = mm/s * 3600 / 1e6 = mm/s * (36/10) / 1000`) and cross-checked against sdk-ant's own `bsc_rx` sample, which does include the `/1000` term. This port uses the corrected (divided) coefficient rather than reproducing stravaV10's original bug.
+
+New Kconfig: `CONFIG_ANT_HRM`, `CONFIG_ANT_BSC`, `CONFIG_ANT_KEY_MANAGER` (the last one is what actually provides `ant_plus_key_set()` — `ant_demo.c`'s wildcard channel doesn't need it, since it isn't profile-keyed).
+
+**Validated on real hardware**: flashed to the DK, console shows both channels opening cleanly right after the wildcard channel, alongside BLE central scan / USB CDC-ACM / task/power/poll demos all starting with no errors:
+```
+ant_demo: ANT wildcard RX channel open, listening...
+ant_hrm: ANT HRM channel 2 init
+ant_hrm: ANT HRM channel 2 open
+hrm_demo: ANT+ HRM channel 2 open, searching for device 17334...
+ant_bsc: ANT BSC channel 1 init
+ant_bsc: ANT BSC channel 1 open
+bsc_demo: ANT+ BSC channel 1 open, searching for device 15568...
+```
+No real HRM strap or speed/cadence sensor was nearby to pair with, so (same tier as the wildcard channel's own validation) actual page reception/decoding is still unproven — this confirms clean init and open, not a live pairing.
+
+One porting-time API gotcha: sdk-ant renamed the legacy SoftDevice-style `sd_ant_channel_id_get()` (used by stravaV10 to detect first-successful-pairing) to plain `ant_channel_id_get()` — caught immediately at link time (`undefined reference`), not a silent behavior change.
+
+FE-C (`rf/fec.c`) and glasses.c (`rf/glasses.c`) remain unported, per the "likely shape" note above — out of scope for this update.
+
 ### Phase 6 status: GPS (done — logic tier verified correct, not just "doesn't crash"; hardware tier is clean-UART only)
 
 **Logic tier, in `stravaV11_app` (native_sim)**: ported `libraries/TinyGPSPlus/TinyGPS++.{h,cpp}` unmodified (already fully portable), plus a trimmed `source/model/Locator.{h,cpp}`. Trimmed three things, each for a specific reason: `locator_dispatch_lns_update()` is dead code now (it exists to feed BLE LNS updates into `nrf_loc`, and `ble_lns_c` is out of scope — see Phase 5); `displayGPS2()` is pure `vue`/LS027 screen-drawing, not GPS logic, so it belongs with the Phase 7 UI port instead; two `w_task_events_set(...)` calls (notifying the Boucle task of a new fix) are dropped since Boucle isn't ported yet — parsing/decoding still happens correctly without them, only the "wake up the consumer" notification is missing, and there's no consumer yet anyway. Also dropped two vestigial includes (`Model.h`, `Attitude.h`) that nothing in Locator actually referenced, same pattern as Phase 1's `PowerZone`/`RRZone`. `source/model/Sensor.h` (the templated freshness-tracking wrapper `Locator` uses for `gps_loc`/`nrf_loc`/`sim_loc`) is fully portable, ported unmodified. `GPS_MGMT` (declared in `GPSMGMT.h`, real implementation in `GPSMGMT.cpp` not ported — it's a UART/GPIO/task orchestration layer, same category as `Model.cpp`) is stubbed in `adapters/gps_mgmt_stub.cpp`, implementing only the three methods `Locator` actually calls (`isFix()`, `startHostAidingEPO()`, the constructor) — same adapter-stub pattern as `UserSettings`'s FRAM calls in Phase 1.
