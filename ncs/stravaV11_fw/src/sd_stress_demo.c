@@ -14,9 +14,15 @@
  * should surface faster and more reliably here than waiting for the
  * real map screen to happen to need a reload.
  *
- * Mounts its own "/SD:" volume (separate FATFS/fs_mount_t instance from
- * sd_fat_demo()'s in main.c) and keeps it mounted for the process
- * lifetime, matching the original SD-backed map_screen_demo's approach.
+ * Mounts and unmounts its own "/SD:" volume (separate FATFS/fs_mount_t
+ * instance from sd_fat_demo()'s and map_screen_demo's own) every single
+ * cycle, rather than holding a persistent mount -- found the hard way
+ * that Zephyr's fs layer only allows one mount per path at a time
+ * (`fs_mount()` returns -EBUSY otherwise), so this and map_screen_demo
+ * (which also needs "/SD:") can't both hold a persistent mount
+ * simultaneously. Transient mount/unmount per cycle is the same
+ * already-proven-safe pattern sd_fat_demo() and the original one-shot
+ * map_demo() both use.
  */
 
 #include <string.h>
@@ -55,6 +61,15 @@ static void sd_stress_work_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
 
+	int err = fs_mount(&s_mp);
+
+	if (err != 0) {
+		printk("sd_stress: cycle %u fs_mount(\"/SD:\") -> %d\n", s_cycle, err);
+		k_work_schedule(&sd_stress_work, K_MSEC(SD_STRESS_INTERVAL_MS));
+		s_cycle++;
+		return;
+	}
+
 	for (size_t i = 0; i < SD_STRESS_BUF_SIZE; i++) {
 		s_write_buf[i] = (uint8_t)(i + s_cycle);
 	}
@@ -62,11 +77,13 @@ static void sd_stress_work_handler(struct k_work *work)
 	struct fs_file_t file;
 
 	fs_file_t_init(&file);
-	int err = fs_open(&file, SD_STRESS_PATH, FS_O_CREATE | FS_O_WRITE | FS_O_TRUNC);
+	err = fs_open(&file, SD_STRESS_PATH, FS_O_CREATE | FS_O_WRITE | FS_O_TRUNC);
 
 	if (err != 0) {
 		printk("sd_stress: fs_open(write) -> %d\n", err);
+		fs_unmount(&s_mp);
 		k_work_schedule(&sd_stress_work, K_MSEC(SD_STRESS_INTERVAL_MS));
+		s_cycle++;
 		return;
 	}
 
@@ -82,6 +99,7 @@ static void sd_stress_work_handler(struct k_work *work)
 	if (err != 0) {
 		printk("sd_stress: cycle %u write=%d bytes in %u us, fs_open(read) -> %d\n",
 		       s_cycle, (int)written, write_us, err);
+		fs_unmount(&s_mp);
 		k_work_schedule(&sd_stress_work, K_MSEC(SD_STRESS_INTERVAL_MS));
 		s_cycle++;
 		return;
@@ -92,6 +110,7 @@ static void sd_stress_work_handler(struct k_work *work)
 	uint32_t read_us = k_cyc_to_us_floor32(k_cycle_get_32() - read_start);
 
 	fs_close(&file);
+	fs_unmount(&s_mp);
 
 	bool match = (bytes_read == (ssize_t)sizeof(s_read_buf)) &&
 		     (memcmp(s_write_buf, s_read_buf, sizeof(s_write_buf)) == 0);
@@ -105,14 +124,8 @@ static void sd_stress_work_handler(struct k_work *work)
 
 void sd_stress_demo_start(void)
 {
-	int err = fs_mount(&s_mp);
-
-	printk("sd_stress: fs_mount(\"/SD:\") -> %d, %uKB every %dms\n", err,
+	printk("sd_stress: starting, %uKB every %dms (mount/unmount each cycle)\n",
 	       SD_STRESS_BUF_SIZE / 1024, SD_STRESS_INTERVAL_MS);
-	if (err != 0) {
-		return;
-	}
-
 	k_work_schedule(&sd_stress_work, K_NO_WAIT);
 }
 
