@@ -41,6 +41,7 @@
 #include "gfx_demo.h"
 #include "gps_demo.h"
 #include "gps_sim_demo.h"
+#include "map_demo.h"
 #include "Locator.h"
 #include "sensor_screen_demo.h"
 #include "task_demo.h"
@@ -638,6 +639,7 @@ int main(void)
 	sensor_demo("fxos8700", DEVICE_DT_GET(DT_NODELABEL(fxos8700)));
 	fram_demo();
 	storage_demo();
+	map_demo();
 	display_demo();
 	gfx_demo();
 	uart_demo();

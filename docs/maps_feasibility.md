@@ -213,6 +213,25 @@ magic, a buffer too short to hold the header). **All pass** on
 `native_sim` (`west build -b native_sim/native/64 stravaV11_app`, then
 run `zephyr.exe`).
 
+**The remaining `fs_open()`/`fs_read()` glue is now also done, and
+validated on real hardware.** `map_tile.{h,c}` and `test_tile_data.h`
+were copied unmodified into `stravaV11_fw` (same "copy, don't symlink"
+precedent as `Locator.cpp`), and a new `stravaV11_fw/src/map_demo.c`
+wires them to the real SD card: it seeds the card with the same real
+tool-generated `tile_2_2.bin` bytes, then loads it back using *only* the
+generic loading path a real GPS-driven lookup would use —
+`map_tile_name_for()` to compute the filename, `fs_open()`/`fs_read()`
+by that name, then `map_tile_iter` parsing — not any special knowledge
+of the buffer the same demo just wrote. On the real board:
+`map_demo: fs_mount("/SD:") -> 0`, `seeded /SD:/tile_2_2.bin (44 bytes)`,
+`fs_read() -> 44 bytes`, and all 5 points decoded exactly matching the
+same values already verified on `native_sim` — `lat=0.050000
+lon=0.050000` through `lat=0.050000 lon=0.060000` — with every other
+Phase 2-11 subsystem still running cleanly in the same boot. The on-device
+loading pipeline is now fully proven end to end; only real map data (an
+actual OSM extract of a real riding area) is missing, not any remaining
+plumbing.
+
 ## Real risks and open questions
 
 1. ~~**SD FAT filesystem is unproven.**~~ **Resolved 2026-09-06, validated
@@ -251,17 +270,15 @@ run `zephyr.exe`).
    card.~~ **Done** — see risk #1 above.
 2. ~~Build the offline OSM-to-binary-tile conversion tool.~~ **Done** —
    see "Offline conversion tool" below.
-3. ~~On-device: a minimal parser, tested on `native_sim` first.~~ **Done**
-   — see "On-device tile parser" below. The real file-reading half of
-   "loader" (an `fs_open()`/`fs_read()` wrapper on the real SD card) is
-   deliberately not part of this step, and still open — everything about
-   *what* to load (`map_tile_name_for()`) and how to *decode* it
-   (`map_tile.c`) is hardware-agnostic and validated; only the trivial,
-   already-de-risked "open this exact filename and read its bytes" glue
-   (proven safe in step 1's `sd_fat_demo()`) remains.
+3. ~~On-device: a minimal parser, tested on `native_sim` first; then the
+   real `fs_open()`/`fs_read()` loading glue on hardware.~~ **Done** —
+   see "On-device tile parser" below. The loading pipeline (filename
+   resolution, real SD-card file read, decode) is fully validated
+   end-to-end on real hardware; only real map data is still missing.
 4. Wire the (currently dead) `Zoom` projection math to real rendering via
    `ZephyrGFX`, validate against `native_sim` with a fixed test tile.
-5. Hardware bring-up on the real board: real SD-backed tiles, real
+5. Hardware bring-up on the real board: real map data (an actual OSM
+   extract of a riding area, not the synthetic test tile), real
    GPS-driven panning, buttons for zoom (new input-handling work).
 
 ## On-device library survey
