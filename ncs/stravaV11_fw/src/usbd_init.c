@@ -69,8 +69,20 @@ struct usbd_context *stravav11_usbd_init(usbd_msg_cb_t msg_cb)
 		return NULL;
 	}
 
-	/* Single CDC-ACM interface: no IAD needed. */
-	usbd_device_set_code_triple(&stravav11_usbd, USBD_SPEED_FS, 0, 0, 0);
+	/*
+	 * CDC-ACM is a multi-interface (control+data) class needing an
+	 * Interface Association Descriptor to enumerate correctly on
+	 * strict hosts (Windows in particular) -- this is exactly the
+	 * device-class triple Zephyr's own sample_usbd_init.c uses whenever
+	 * CDC-ACM (or similarly IAD-based classes) is enabled, see
+	 * samples/subsys/usb/common/sample_usbd_init.c. Previously left as
+	 * (0,0,0) ("read from interface descriptors") since Linux enumerated
+	 * fine either way with only CDC-ACM present; now that MSC makes this
+	 * a genuinely multi-class composite device, match the reference
+	 * behavior instead of relying on host leniency.
+	 */
+	usbd_device_set_code_triple(&stravav11_usbd, USBD_SPEED_FS, USB_BCC_MISCELLANEOUS, 0x02,
+				     0x01);
 
 	if (msg_cb != NULL) {
 		err = usbd_msg_register_cb(&stravav11_usbd, msg_cb);

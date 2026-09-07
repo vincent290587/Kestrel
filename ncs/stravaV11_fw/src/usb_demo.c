@@ -4,12 +4,23 @@
  *
  * stravaV10's usb_cdc.c is actually a composite CDC-ACM + MSC (mass
  * storage) device -- the MSC half exposes the SD card/NOR flash as a USB
- * drive for unloading GPX/segment files. That half isn't ported here: Zephyr's
- * USB MSC class needs a disk_access-registered block device, and Phase 4
- * deliberately didn't get the QSPI flash that far (NCS Partition Manager
- * issue, see CLAUDE.md) and the SD card has no card inserted anyway. A
- * real SD card or resolving that PM gap would unblock it -- noted as a gap,
- * not attempted here.
+ * drive for unloading GPX/segment files. The SD-card half of that is now
+ * ported below (USBD_DEFINE_MSC_LUN against disk "SD", the same
+ * disk_access device sd_fat_demo()/map_screen_demo/sd_stress_demo already
+ * use). NOR flash still isn't a LUN here: it would need its own
+ * disk_access registration, still blocked on the Partition Manager issue
+ * from Phase 4 (see CLAUDE.md) -- unrelated to the SD path, a separate gap.
+ *
+ * Real hazard worth calling out explicitly: this app's own demos
+ * (sd_stress_demo, map_screen_demo) mount/read/write "SD" via the fs layer
+ * on their own schedule, transiently, while MSC exposes the identical
+ * physical disk directly to whatever the host OS decides to do with it at
+ * any time -- there's no mutex or handoff between the two. On a real
+ * product this would need gating (e.g. only exposing MSC in a dedicated
+ * "connect to PC" mode, not during live logging), but that's out of scope
+ * for this bring-up; here it's tolerated since the card is explicitly a
+ * blank/scratch card, not something a corrupted FAT table would lose real
+ * data from.
  *
  * Real-hardware note unlike every other "nothing attached" peripheral in
  * this port: this DK's own USB peripheral (not the J-Link's) needs a
@@ -24,12 +35,19 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/usb/usbd.h>
+#include <zephyr/usb/class/usbd_msc.h>
 #include <zephyr/logging/log.h>
 
 #include "usbd_init.h"
 #include "usb_demo.h"
 
 LOG_MODULE_REGISTER(usb_demo, LOG_LEVEL_INF);
+
+/* Disk name "SD" matches the zephyr,sdmmc-disk node's disk-name property in
+ * both boards' devicetree (boards/nrf52840dk_nrf52840.overlay and
+ * boards/vincent/stravav11/stravav11_nrf52840.dts) -- the same disk every
+ * SD demo in main.c already opens by that name. */
+USBD_DEFINE_MSC_LUN(sd, "SD", "stravaV11", "SD Card", "0.00");
 
 static void usbd_msg_cb(struct usbd_context *const ctx, const struct usbd_msg *msg)
 {
