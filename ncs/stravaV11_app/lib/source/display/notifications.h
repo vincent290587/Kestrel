@@ -35,6 +35,12 @@ typedef struct {
 
 //////////////////////////     MACROS
 
+/* Fixed 2026-09-07: BLUE and GREEN were swapped in stravaV10's original
+ * header (BLUE set rgb[1], GREEN set rgb[2]) -- get_notifications_color()
+ * in notifications.c maps rgb[0..2] directly to R/G/B, so the original
+ * macros produced the wrong color by name (confirmed on real hardware:
+ * SET_NEO_EVENT_GREEN lit the LED blue). Corrected here so each macro's
+ * name matches what it actually shows. */
 
 #define SET_NEO_EVENT_RED(X, Y, TIME) \
 	X.event_type = Y; \
@@ -43,14 +49,14 @@ typedef struct {
 	X.rgb[1] = 0x00; \
 	X.rgb[2] = 0x00
 
-#define SET_NEO_EVENT_BLUE(X, Y, TIME) \
+#define SET_NEO_EVENT_GREEN(X, Y, TIME) \
 	X.event_type = Y; \
 	X.on_time = 5; \
 	X.rgb[0] = 0x00; \
 	X.rgb[1] = 0xFF; \
 	X.rgb[2] = 0x00
 
-#define SET_NEO_EVENT_GREEN(X, Y, TIME) \
+#define SET_NEO_EVENT_BLUE(X, Y, TIME) \
 	X.event_type = Y; \
 	X.on_time = 5; \
 	X.rgb[0] = 0x00; \

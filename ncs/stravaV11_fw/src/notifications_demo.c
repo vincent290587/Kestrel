@@ -41,3 +41,33 @@ void notifications_demo_start(void)
 
 	k_work_schedule(&notifications_work, K_NO_WAIT);
 }
+
+static void trigger(sNeopixelOrders *order, const char *label)
+{
+	notifications_setNotify(order);
+	printk("notifications: %s pulse queued\n", label);
+}
+
+void notifications_demo_trigger_red(void)
+{
+	sNeopixelOrders order;
+
+	SET_NEO_EVENT_RED(order, eNeoEventNotify, 0);
+	trigger(&order, "RED");
+}
+
+void notifications_demo_trigger_green(void)
+{
+	sNeopixelOrders order;
+
+	SET_NEO_EVENT_GREEN(order, eNeoEventNotify, 0);
+	trigger(&order, "GREEN");
+}
+
+void notifications_demo_trigger_blue(void)
+{
+	sNeopixelOrders order;
+
+	SET_NEO_EVENT_BLUE(order, eNeoEventNotify, 0);
+	trigger(&order, "BLUE");
+}

@@ -28,6 +28,7 @@
 #include "map_screen_demo.h"
 #include "disk_raw_test.h"
 #include "sd_format.h"
+#include "notifications_demo.h"
 #include "cmd_console.h"
 
 LOG_MODULE_REGISTER(cmd_console, LOG_LEVEL_INF);
@@ -60,10 +61,16 @@ static void handle_command(const char *cmd)
 		disk_raw_test_start();
 	} else if (strcmp(cmd, "FORMAT SD") == 0) {
 		sd_format_start();
+	} else if (strcmp(cmd, "LED RED") == 0) {
+		notifications_demo_trigger_red();
+	} else if (strcmp(cmd, "LED GREEN") == 0) {
+		notifications_demo_trigger_green();
+	} else if (strcmp(cmd, "LED BLUE") == 0) {
+		notifications_demo_trigger_blue();
 	} else {
 		LOG_WRN("cmd_console: unknown command \"%s\" (try \"SIM START\", \"SIM STOP\", "
 			"\"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
-			"\"DISK TEST\", or \"FORMAT SD\")",
+			"\"DISK TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", or \"LED BLUE\")",
 			cmd);
 	}
 }
@@ -147,5 +154,5 @@ void cmd_console_start(void)
 
 	LOG_INF("cmd_console: ready on RTT down channel 0 and USB CDC-ACM -- \"SIM START\", "
 		"\"SIM STOP\", \"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
-		"\"DISK TEST\", \"FORMAT SD\"");
+		"\"DISK TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\"");
 }

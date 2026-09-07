@@ -6,13 +6,11 @@
  * original's "#include boards.h" -- nothing in this file actually used
  * anything from it, an unused leftover include in the original.
  *
- * Known pre-existing quirk, kept as-is for fidelity to the real hardware
- * behavior riders have already seen: notifications.h's SET_NEO_EVENT_BLUE
- * macro sets rgb[1] (green), and SET_NEO_EVENT_GREEN sets rgb[2] (blue) --
- * the two are swapped relative to their names. get_notifications_color()
- * below maps rgb[0..2] directly to R/G/B (bits 23:16/15:8/7:0), so
- * SET_NEO_EVENT_BLUE actually produces green light and vice versa. Not
- * fixed here -- flagged for the user to decide whether to correct it.
+ * notifications.h's SET_NEO_EVENT_BLUE/SET_NEO_EVENT_GREEN macros were
+ * swapped relative to their names in the original stravaV10 header
+ * (get_notifications_color() below maps rgb[0..2] directly to R/G/B, bits
+ * 23:16/15:8/7:0) -- confirmed on real hardware (SET_NEO_EVENT_GREEN lit
+ * the LED blue) and fixed in notifications.h, not here.
  */
 
 #include "stdint.h"

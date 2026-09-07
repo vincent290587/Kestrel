@@ -14,4 +14,15 @@
  * this will just show the LED off. */
 void notifications_demo_start(void);
 
+/* Fire the SET_NEO_EVENT_RED/GREEN/BLUE macro directly, on demand -- for
+ * checking on real hardware whether the macro's name actually matches
+ * the color it produces (notifications.c's own comment flags
+ * SET_NEO_EVENT_BLUE/GREEN as swapped in the original stravaV10 code;
+ * these let that be confirmed empirically rather than just read off the
+ * macro body). Wired to cmd_console.c's "LED RED"/"LED GREEN"/"LED BLUE"
+ * commands. */
+void notifications_demo_trigger_red(void);
+void notifications_demo_trigger_green(void);
+void notifications_demo_trigger_blue(void);
+
 #endif /* NOTIFICATIONS_DEMO_H_ */
