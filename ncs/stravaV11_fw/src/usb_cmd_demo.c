@@ -1,14 +1,15 @@
 /*
- * USB CDC-ACM command console: gates sd_stress_demo and map_screen_demo
- * behind explicit "STRESS START"/"STRESS STOP"/"MAP START"/"MAP STOP"
- * commands instead of auto-starting them at boot -- both do real SD-card
- * I/O on their own recurring schedule (sd_stress_demo every 500ms,
- * map_screen_demo every ~1s once gps_sim_demo has a fix), competing for
- * the same physical SD card as USB MSC (usb_demo.c's own comment already
- * flags this concurrent-access hazard). Confirmed as a real, not just
- * theoretical, problem: a genuine host-side bulk copy of ~1900 map tile
+ * USB CDC-ACM command console: gates sd_stress_demo, map_screen_demo, and
+ * disk_raw_test_start() behind explicit commands instead of auto-starting
+ * them at boot -- all three do real, potentially destructive SD-card I/O:
+ * sd_stress_demo and map_screen_demo compete with USB MSC host access on
+ * their own recurring schedule (confirmed as a real, not just
+ * theoretical, problem -- a genuine host-side bulk copy of ~1900 map tile
  * files over the MSC "SD" LUN slowed to a crawl with sd_stress_demo
- * running concurrently at its 500ms cadence.
+ * running concurrently at its 500ms cadence), and disk_raw_test_start()'s
+ * "SD" half writes straight to sector 0, the FAT boot sector -- doing
+ * that every boot was silently reformatting the card fresh (see
+ * disk_raw_test.h), wiping the same map-tile data.
  *
  * Uses USB CDC-ACM, not the RTT down channel gps_sim_demo.c's "SIM
  * START"/"SIM STOP" commands use -- that module's own comment explains
@@ -31,6 +32,7 @@
 
 #include "sd_stress_demo.h"
 #include "map_screen_demo.h"
+#include "disk_raw_test.h"
 #include "usb_cmd_demo.h"
 
 LOG_MODULE_REGISTER(usb_cmd_demo, LOG_LEVEL_INF);
@@ -55,9 +57,11 @@ static void handle_command(const char *cmd)
 		map_screen_demo_start();
 	} else if (strcmp(cmd, "MAP STOP") == 0) {
 		map_screen_demo_stop();
+	} else if (strcmp(cmd, "DISK TEST") == 0) {
+		disk_raw_test_start();
 	} else {
 		LOG_WRN("usb_cmd: unknown command \"%s\" (try \"STRESS START\", "
-			"\"STRESS STOP\", \"MAP START\", or \"MAP STOP\")",
+			"\"STRESS STOP\", \"MAP START\", \"MAP STOP\", or \"DISK TEST\")",
 			cmd);
 	}
 }
@@ -95,7 +99,18 @@ void usb_cmd_demo_start(void)
 		return;
 	}
 
-	LOG_INF("usb_cmd: ready -- \"STRESS START\"/\"STRESS STOP\"/\"MAP START\"/\"MAP STOP\" "
-		"over USB CDC-ACM");
+	/* Confirmed by reading usbd_cdc_acm.c directly: this driver's bulk-OUT
+	 * endpoint is never armed to receive host data until
+	 * uart_irq_rx_enable() is called at least once (cdc_acm_rx_fifo_work,
+	 * which posts the actual receive buffer, is only ever first submitted
+	 * from cdc_acm_irq_rx_enable()) -- plain uart_poll_in() alone, with no
+	 * prior irq_rx_enable() call, silently never receives anything, no
+	 * error either. Safe to call without also registering an IRQ callback
+	 * via uart_irq_callback_set(): every callback-invoking path in that
+	 * driver already guards on the callback being non-NULL before use. */
+	uart_irq_rx_enable(s_uart_dev);
+
+	LOG_INF("usb_cmd: ready -- \"STRESS START\"/\"STRESS STOP\"/\"MAP START\"/\"MAP STOP\"/"
+		"\"DISK TEST\" over USB CDC-ACM");
 	k_work_schedule(&cmd_poll_work, K_NO_WAIT);
 }

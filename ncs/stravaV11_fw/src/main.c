@@ -49,6 +49,7 @@
 #include "poll_demo.h"
 #include "usb_demo.h"
 #include "usb_cmd_demo.h"
+#include "disk_raw_test.h"
 
 /*
  * The custom PCB latches its own regulator ON via the STC3100 fuel gauge's
@@ -480,19 +481,25 @@ static void qspi_xip_demo(const struct device *flash)
 #endif
 }
 
+/* Not called from storage_demo() anymore -- disk_raw_ioctl_demo()'s own
+ * write/read round trip lands on sector 0, which for "SD" is the FAT boot
+ * sector. Real, persistent map-tile data on the SD card means that
+ * corrupting the boot sector on *every boot* (which is what this was
+ * doing) forces CONFIG_FS_FATFS_MOUNT_MKFS to silently reformat the card
+ * fresh right after, wiping it -- confirmed as the real cause of two
+ * separate "the tile files vanished" incidents in the same session, not
+ * the RTT/sd_stress issues that were also found and fixed alongside it.
+ * Gated behind usb_cmd_demo.c's "DISK TEST" command instead -- exported
+ * here (declared in disk_raw_test.h) rather than moved to its own file,
+ * since disk_raw_ioctl_demo() itself is small and only used from main.c. */
+void disk_raw_test_start(void)
+{
+	disk_raw_ioctl_demo("SD");
+	disk_raw_ioctl_demo("NOR");
+}
+
 static void storage_demo(void)
 {
-	/* SD card: no card/slot on this DK (see the overlay) -- this just
-	 * proves the driver reports a clean error instead of hanging. */
-	disk_raw_ioctl_demo("SD");
-
-	/* Raw NOR-as-USB-disk (see usb_demo.c and the mx25r64/EXTERNAL_FLASH_DISK
-	 * devicetree note): confirms disk_access itself reports the real
-	 * sector count/size for "NOR" independent of USB/host behavior --
-	 * the write/read half is skipped since the sector size here (4096)
-	 * doesn't match this helper's fixed 512-byte test buffer. */
-	disk_raw_ioctl_demo("NOR");
-
 #if defined(CONFIG_FAT_FILESYSTEM_ELM)
 	sd_fat_demo();
 #endif
