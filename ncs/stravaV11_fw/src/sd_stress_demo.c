@@ -53,6 +53,7 @@ static struct fs_mount_t s_mp = {
 static uint8_t s_write_buf[SD_STRESS_BUF_SIZE];
 static uint8_t s_read_buf[SD_STRESS_BUF_SIZE];
 static uint32_t s_cycle;
+static bool s_active;
 
 static void sd_stress_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(sd_stress_work, sd_stress_work_handler);
@@ -60,6 +61,10 @@ static K_WORK_DELAYABLE_DEFINE(sd_stress_work, sd_stress_work_handler);
 static void sd_stress_work_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
+
+	if (!s_active) {
+		return;
+	}
 
 	int err = fs_mount(&s_mp);
 
@@ -124,9 +129,24 @@ static void sd_stress_work_handler(struct k_work *work)
 
 void sd_stress_demo_start(void)
 {
+	if (s_active) {
+		printk("sd_stress: already running\n");
+		return;
+	}
 	printk("sd_stress: starting, %uKB every %dms (mount/unmount each cycle)\n",
 	       SD_STRESS_BUF_SIZE / 1024, SD_STRESS_INTERVAL_MS);
+	s_active = true;
 	k_work_schedule(&sd_stress_work, K_NO_WAIT);
+}
+
+void sd_stress_demo_stop(void)
+{
+	if (!s_active) {
+		printk("sd_stress: not running\n");
+		return;
+	}
+	s_active = false;
+	printk("sd_stress: stopping after cycle %u\n", s_cycle);
 }
 
 #else /* !CONFIG_FAT_FILESYSTEM_ELM */
@@ -134,6 +154,10 @@ void sd_stress_demo_start(void)
 void sd_stress_demo_start(void)
 {
 	printk("sd_stress: skipped (CONFIG_FAT_FILESYSTEM_ELM not enabled)\n");
+}
+
+void sd_stress_demo_stop(void)
+{
 }
 
 #endif

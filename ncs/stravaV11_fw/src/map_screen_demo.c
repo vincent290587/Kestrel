@@ -64,6 +64,7 @@ static struct fs_mount_t s_mp = {
 	.mnt_point = "/SD:",
 };
 static uint8_t s_load_buf[MAP_TILE_LOAD_BUF_SIZE];
+static bool s_active;
 
 static void map_screen_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(map_screen_work, map_screen_work_handler);
@@ -112,6 +113,10 @@ static bool seed_tiles(void)
 static void map_screen_work_handler(struct k_work *work)
 {
 	ARG_UNUSED(work);
+
+	if (!s_active) {
+		return;
+	}
 
 	float lat = 0.f, lon = 0.f;
 
@@ -171,12 +176,28 @@ static void map_screen_work_handler(struct k_work *work)
 
 void map_screen_demo_start(void)
 {
+	if (s_active) {
+		printk("map_screen: already running\n");
+		return;
+	}
+
 	if (!seed_tiles()) {
 		printk("map_screen: seeding failed, not starting redraw loop\n");
 		return;
 	}
 
+	s_active = true;
 	k_work_schedule(&map_screen_work, K_NO_WAIT);
+}
+
+void map_screen_demo_stop(void)
+{
+	if (!s_active) {
+		printk("map_screen: not running\n");
+		return;
+	}
+	s_active = false;
+	printk("map_screen: stopping\n");
 }
 
 #else /* !CONFIG_FAT_FILESYSTEM_ELM */
@@ -184,6 +205,10 @@ void map_screen_demo_start(void)
 void map_screen_demo_start(void)
 {
 	printk("map_screen: skipped (CONFIG_FAT_FILESYSTEM_ELM not enabled)\n");
+}
+
+void map_screen_demo_stop(void)
+{
 }
 
 #endif

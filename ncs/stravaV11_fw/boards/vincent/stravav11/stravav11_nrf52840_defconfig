@@ -22,13 +22,22 @@ CONFIG_SEGGER_RTT_BUFFER_SIZE_UP=2048
 
 # Buffer 0 (shared by printk/RTT_CONSOLE and the LOG_BACKEND_RTT backend)
 # defaults to NO_BLOCK_SKIP -- silently drops output once the buffer fills
-# rather than waiting for the reader to drain it. That's what caused the
-# remaining truncated tail (BLE/USB init missing) even after the 2048B
-# bump above: this host-side pyocd rtt reader isn't fast/continuous enough
-# to keep up with a burst under skip mode. Blocking trades that for the
-# firmware pausing on RTT writes if no reader is attached at all -- fine
-# for bring-up/debug builds, not appropriate for production.
-CONFIG_SEGGER_RTT_MODE_BLOCK_IF_FIFO_FULL=y
+# rather than waiting for the reader to drain it. This was switched to
+# BLOCK_IF_FIFO_FULL during Phase 11 to stop truncated captures (this
+# host-side pyocd rtt reader isn't fast/continuous enough under a burst in
+# skip mode) -- but that trade genuinely bit: this project's own capture
+# workflow is short attach/detach RTT sessions, not a continuously
+# attached reader, and once a session detaches with the firmware still
+# logging, the *next* printk()/LOG_INF() call blocks the CPU forever
+# waiting for a reader that isn't coming back. That's the real, confirmed
+# cause of a board going fully unresponsive (and corrupting the SD card's
+# FAT directory mid-write) during a long-running real-hardware session --
+# not the power-loss issue this project hit before, which looks similar
+# from the outside but has a different root cause and a different fix
+# (the STC3100 latch refresh). Reverted to the safe default: a dropped
+# log line is a debugging annoyance, a halted CPU mid-filesystem-write is
+# data loss.
+CONFIG_SEGGER_RTT_MODE_NO_BLOCK_SKIP=y
 
 # A separate, upstream bottleneck from either RTT buffer above:
 # CONFIG_LOG_PRINTK=y routes printk() (and LOG_INF() etc.) through the

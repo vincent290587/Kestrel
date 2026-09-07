@@ -42,14 +42,13 @@
 #include "gps_demo.h"
 #include "gps_sim_demo.h"
 #include "map_demo.h"
-#include "map_screen_demo.h"
-#include "sd_stress_demo.h"
 #include "Locator.h"
 #include "sensor_screen_demo.h"
 #include "task_demo.h"
 #include "power_demo.h"
 #include "poll_demo.h"
 #include "usb_demo.h"
+#include "usb_cmd_demo.h"
 
 /*
  * The custom PCB latches its own regulator ON via the STC3100 fuel gauge's
@@ -689,14 +688,13 @@ int main(void)
 	poll_demo_start();
 	usb_demo_start();
 
-	/* Re-tests the actual originally-crashing configuration directly:
-	 * the full subsystem set above, restored after the methodical
-	 * isolation that found and fixed the (separate, unrelated)
-	 * getPosition() render bug, now running alongside real, heavy,
-	 * sustained SD-card I/O again -- docs/maps_feasibility.md risk #6. */
-	sd_stress_demo_start();
+	/* sd_stress_demo and map_screen_demo both do real, recurring SD-card
+	 * I/O that competes with USB MSC host access (see usb_cmd_demo.c) --
+	 * no longer auto-started here. usb_cmd_demo_start() just arms the
+	 * "STRESS START"/"MAP START" command listener; nothing SD-heavy runs
+	 * until one of those commands is actually sent. */
+	usb_cmd_demo_start();
 
-	map_screen_demo_start();
 	gps_sim_demo_start();
 
 	printk("=== bring-up smoke test done ===\n");
