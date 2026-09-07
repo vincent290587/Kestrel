@@ -10,7 +10,7 @@
  * cleanly if CONFIG_FAT_FILESYSTEM_ELM isn't set. Call after
  * storage_demo() and gps_demo_init().
  *
- * Not auto-started at boot -- gated behind usb_cmd_demo.c's "MAP
+ * Not auto-started at boot -- gated behind cmd_console.c's "MAP
  * START"/"MAP STOP" commands, same reasoning as sd_stress_demo.h: real
  * SD-card I/O every redraw cycle competes with USB MSC host access. In
  * practice this demo is SD-quiet until gps_sim_demo also has a fix to

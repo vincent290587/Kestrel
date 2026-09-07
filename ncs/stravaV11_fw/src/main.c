@@ -40,7 +40,6 @@
 #include "bsc_demo.h"
 #include "gfx_demo.h"
 #include "gps_demo.h"
-#include "gps_sim_demo.h"
 #include "map_demo.h"
 #include "Locator.h"
 #include "sensor_screen_demo.h"
@@ -48,7 +47,7 @@
 #include "power_demo.h"
 #include "poll_demo.h"
 #include "usb_demo.h"
-#include "usb_cmd_demo.h"
+#include "cmd_console.h"
 #include "disk_raw_test.h"
 
 /*
@@ -489,7 +488,7 @@ static void qspi_xip_demo(const struct device *flash)
  * fresh right after, wiping it -- confirmed as the real cause of two
  * separate "the tile files vanished" incidents in the same session, not
  * the RTT/sd_stress issues that were also found and fixed alongside it.
- * Gated behind usb_cmd_demo.c's "DISK TEST" command instead -- exported
+ * Gated behind cmd_console.c's "DISK TEST" command instead -- exported
  * here (declared in disk_raw_test.h) rather than moved to its own file,
  * since disk_raw_ioctl_demo() itself is small and only used from main.c. */
 void disk_raw_test_start(void)
@@ -696,13 +695,12 @@ int main(void)
 	usb_demo_start();
 
 	/* sd_stress_demo and map_screen_demo both do real, recurring SD-card
-	 * I/O that competes with USB MSC host access (see usb_cmd_demo.c) --
-	 * no longer auto-started here. usb_cmd_demo_start() just arms the
-	 * "STRESS START"/"MAP START" command listener; nothing SD-heavy runs
-	 * until one of those commands is actually sent. */
-	usb_cmd_demo_start();
-
-	gps_sim_demo_start();
+	 * I/O that competes with USB MSC host access (see cmd_console.c) --
+	 * neither auto-starts anymore. cmd_console_start() just arms the
+	 * shared RTT+CDC-ACM command listener (covers gps_sim_demo's "SIM
+	 * START" too, not just the SD-heavy ones); nothing it gates actually
+	 * runs until the matching command is sent. */
+	cmd_console_start();
 
 	printk("=== bring-up smoke test done ===\n");
 	return 0;

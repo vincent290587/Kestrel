@@ -77,7 +77,7 @@ target_sources(app PRIVATE
   src/poll_demo.c
   src/usbd_init.c
   src/usb_demo.c
-  src/usb_cmd_demo.c
+  src/cmd_console.c
   src/sd_format.c
   src/map_demo.c
   src/map_screen_demo.c

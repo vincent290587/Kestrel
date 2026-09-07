@@ -12,7 +12,7 @@
  * used so far) via fs_write()/fs_read(). No-ops cleanly if
  * CONFIG_FAT_FILESYSTEM_ELM isn't set.
  *
- * Not auto-started at boot -- gated behind usb_cmd_demo.c's "STRESS
+ * Not auto-started at boot -- gated behind cmd_console.c's "STRESS
  * START"/"STRESS STOP" commands instead, since this cycle competes for
  * the same physical SD card as USB MSC (see usb_demo.c's own comment on
  * that hazard): a real host-side bulk file copy over MSC was observed

@@ -6,7 +6,7 @@
  * at boot -- the "SD" half lands on sector 0, the FAT boot sector, and
  * doing that on every boot was silently wiping persistent map-tile data
  * (CONFIG_FS_FATFS_MOUNT_MKFS reformats on the next mount once the boot
- * sector looks invalid). Gated behind usb_cmd_demo.c's "DISK TEST"
+ * sector looks invalid). Gated behind cmd_console.c's "DISK TEST"
  * command instead -- run it deliberately, not as part of normal boot. */
 void disk_raw_test_start(void);
 

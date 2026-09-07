@@ -2,7 +2,7 @@
 #define SD_FORMAT_H_
 
 /* Deliberately, cleanly reformats the SD card's FAT filesystem on demand
- * via fs_mkfs() -- gated behind usb_cmd_demo.c's "FORMAT SD" command, not
+ * via fs_mkfs() -- gated behind cmd_console.c's "FORMAT SD" command, not
  * run automatically. Added after a real corruption incident: a large
  * host-side USB MSC file copy followed immediately by a board reset (via
  * nrfutil device recover/reset during unrelated SWD/RTT debugging) left
