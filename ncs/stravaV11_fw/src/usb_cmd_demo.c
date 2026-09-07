@@ -33,6 +33,7 @@
 #include "sd_stress_demo.h"
 #include "map_screen_demo.h"
 #include "disk_raw_test.h"
+#include "sd_format.h"
 #include "usb_cmd_demo.h"
 
 LOG_MODULE_REGISTER(usb_cmd_demo, LOG_LEVEL_INF);
@@ -59,9 +60,12 @@ static void handle_command(const char *cmd)
 		map_screen_demo_stop();
 	} else if (strcmp(cmd, "DISK TEST") == 0) {
 		disk_raw_test_start();
+	} else if (strcmp(cmd, "FORMAT SD") == 0) {
+		sd_format_start();
 	} else {
 		LOG_WRN("usb_cmd: unknown command \"%s\" (try \"STRESS START\", "
-			"\"STRESS STOP\", \"MAP START\", \"MAP STOP\", or \"DISK TEST\")",
+			"\"STRESS STOP\", \"MAP START\", \"MAP STOP\", \"DISK TEST\", or "
+			"\"FORMAT SD\")",
 			cmd);
 	}
 }
@@ -111,6 +115,6 @@ void usb_cmd_demo_start(void)
 	uart_irq_rx_enable(s_uart_dev);
 
 	LOG_INF("usb_cmd: ready -- \"STRESS START\"/\"STRESS STOP\"/\"MAP START\"/\"MAP STOP\"/"
-		"\"DISK TEST\" over USB CDC-ACM");
+		"\"DISK TEST\"/\"FORMAT SD\" over USB CDC-ACM");
 	k_work_schedule(&cmd_poll_work, K_NO_WAIT);
 }
