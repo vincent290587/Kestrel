@@ -1,8 +1,8 @@
 /*
  * Phase 11: GPS simulation for lab testing without real sky visibility.
- * Replays the first 200 points of a real GPX route (converted via
- * tools/gpx_to_c.py -> gps_sim_route.h, generated from the user's own
- * recorded ride) at realistic ~1Hz pacing, injecting directly into
+ * Replays the first GPS_SIM_ROUTE_LEN points of a real GPX route
+ * (converted via tools/gpx_to_c.py -> gps_sim_route.h, generated from the
+ * user's own recorded ride) at realistic ~1Hz pacing, injecting directly into
  * Locator's gps_loc state via gps_demo_inject_location() -- bypassing
  * NMEA/TinyGPS++ entirely, the user's explicit choice: this module is just
  * a straight array lookup, not a parser. speed/course between consecutive
