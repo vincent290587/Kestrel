@@ -31,8 +31,70 @@
 #include "map_render.h"
 #include "notifications.h"
 #include "drv_ws2812_stub.h"
+#include "rv32_emu.h"
+#include "rv32_hostcalls.h"
 
 extern UserSettings u_settings;
+
+/* Host side of the rv32_emu research spike (see rv32_emu.h): the guest's
+ * only way to affect anything outside its own sandboxed memory arena is
+ * through these three hostcalls, which deliberately call straight into
+ * this port's own real ZephyrGFX/notifications code -- not stand-ins --
+ * so this proves a sandboxed guest can drive real project primitives,
+ * which is the actual point of the research question. */
+struct riscv_host_ctx {
+	ZephyrGFX *gfx;
+	uint32_t pixels_drawn;
+	uint32_t led_calls;
+};
+
+static int32_t riscv_hostcall_handler(struct rv32_cpu *cpu, void *user_data, int32_t id,
+				       int32_t a0, int32_t a1, int32_t a2, int32_t a3,
+				       int32_t a4, int32_t a5)
+{
+	(void)a3;
+	(void)a4;
+	(void)a5;
+	riscv_host_ctx *ctx = static_cast<riscv_host_ctx *>(user_data);
+
+	switch (id) {
+	case HOSTCALL_DRAW_PIXEL:
+		ctx->gfx->drawPixel(a0, a1, a2);
+		ctx->pixels_drawn++;
+		return 0;
+
+	case HOSTCALL_LED_SET: {
+		sNeopixelOrders order;
+
+		order.event_type = eNeoEventNotify;
+		order.on_time = 5;
+		order.rgb[0] = (uint8_t)((a0 >> 16) & 0xff);
+		order.rgb[1] = (uint8_t)((a0 >> 8) & 0xff);
+		order.rgb[2] = (uint8_t)(a0 & 0xff);
+		notifications_setNotify(&order);
+		ctx->led_calls++;
+		return 0;
+	}
+
+	case HOSTCALL_DEBUG_PRINT: {
+		uint32_t addr = (uint32_t)a0;
+		uint32_t len = (uint32_t)a1;
+
+		/* Bounds-checked independently of rv32_emu.c's own internal
+		 * checks -- a host handler reading guest memory is exactly
+		 * the kind of code that must never trust guest-supplied
+		 * offsets/lengths without re-validating them itself. */
+		if (len > cpu->mem_size || addr > cpu->mem_size - len) {
+			return -1;
+		}
+		printf("  [guest] %.*s\n", (int)len, (const char *)&cpu->mem[addr]);
+		return 0;
+	}
+
+	default:
+		return -1;
+	}
+}
 
 int main(void)
 {
@@ -262,6 +324,114 @@ int main(void)
 	       (idle_color == 0 && peak_color > 0 && settled_color == 0)
 		       ? "pulse ramped up and back down"
 		       : "BUG: pulse didn't ramp correctly");
+
+	// --- rv32_emu: RV32IM interpreter for running untrusted "plugin" guest
+	// code in a sandbox -- research spike toward eventually letting
+	// third-party code call into real project primitives (pixel drawing,
+	// LED notifications) without host memory access or the ability to hang
+	// the caller. Guest binaries are prebuilt offline by
+	// tools/riscv_guest/build.sh; run that first if these fail to open.
+	// Three cases: a normal guest (real pixels/LED via the hostcall
+	// handler above), a deliberate out-of-bounds guest (proves the memory
+	// bounds check actually traps instead of corrupting host memory), and
+	// a deliberate infinite loop (proves the instruction budget actually
+	// trips instead of hanging this smoke test). ---
+	{
+		static uint8_t guest_mem[64 * 1024];
+		ZephyrGFX riscv_gfx;
+
+		riscv_gfx.fillScreen(0);
+
+		riscv_host_ctx ctx = {&riscv_gfx, 0, 0};
+
+		auto run_guest = [&](const char *bin_name) -> rv32_result {
+			char path[256];
+
+			snprintf(path, sizeof(path), "%s/%s", RISCV_GUEST_BIN_DIR, bin_name);
+			FILE *f = fopen(path, "rb");
+
+			if (!f) {
+				printf("rv32_emu: %s: could not open (run "
+				       "tools/riscv_guest/build.sh first)\n",
+				       bin_name);
+				return RV32_ERR_MEM_FAULT;
+			}
+			uint8_t bin[4096];
+			size_t n = fread(bin, 1, sizeof(bin), f);
+
+			fclose(f);
+
+			rv32_cpu cpu;
+
+			rv32_emu_reset(&cpu, guest_mem, sizeof(guest_mem));
+			rv32_emu_set_hostcall_handler(&cpu, riscv_hostcall_handler, &ctx);
+			if (rv32_emu_load_flat_binary(&cpu, bin, (uint32_t)n) != 0) {
+				printf("rv32_emu: %s: binary too large for arena\n", bin_name);
+				return RV32_ERR_MEM_FAULT;
+			}
+
+			uint32_t steps = 0;
+			rv32_result r = rv32_emu_run(&cpu, 200000, &steps);
+			const char *rstr;
+
+			switch (r) {
+			case RV32_HALTED_EXIT: rstr = "exited"; break;
+			case RV32_ERR_MEM_FAULT: rstr = "MEM_FAULT (trapped)"; break;
+			case RV32_ERR_ILLEGAL_INSN: rstr = "ILLEGAL_INSN (trapped)"; break;
+			case RV32_ERR_MISALIGNED_PC: rstr = "MISALIGNED_PC (trapped)"; break;
+			case RV32_ERR_NO_HOSTCALL_HANDLER: rstr = "NO_HOSTCALL_HANDLER"; break;
+			case RV32_ERR_INSN_BUDGET_EXCEEDED: rstr = "BUDGET_EXCEEDED (trapped)"; break;
+			default: rstr = "?"; break;
+			}
+			printf("rv32_emu: %-10s -> %-24s steps=%-7u exit_code=%-6d pc=0x%05x\n",
+			       bin_name, rstr, steps, cpu.exit_code, cpu.pc);
+			return r;
+		};
+
+		run_guest("test1.bin");
+		uint32_t riscv_pixels = riscv_gfx.countSetPixels();
+
+		/* test1.bin's HOSTCALL_LED_SET call only enqueues the order
+		 * (notifications_setNotify()) -- same as the plain
+		 * notifications.c section above, actually ramping the color
+		 * needs notifications_tasks() ticks, so do that here too
+		 * rather than just trusting led_calls==1 happened. */
+		uint32_t riscv_led_peak = 0;
+
+		for (int i = 0; i < 15; i++) {
+			notifications_tasks();
+			uint32_t c = drv_ws2812_stub_get_last_color();
+
+			if (c > riscv_led_peak) {
+				riscv_led_peak = c;
+			}
+		}
+
+		/* notifications_tasks()'s ramp scales each channel by
+		 * ratio^2/255 (see notifications.c), peaking at ratio=8 for
+		 * on_time=5 -- the same shape the plain-C red pulse above
+		 * peaked at 0x400000 for, just in the green channel here:
+		 * 0xff * 8*8/255 = 0x40. */
+		printf("rv32_emu: test1 drew %u host pixels via HOSTCALL_DRAW_PIXEL, led_calls=%u, "
+		       "peak LED color after guest's led_set(0x00ff00)=0x%06x (%s)\n",
+		       riscv_pixels, ctx.led_calls, riscv_led_peak,
+		       (riscv_pixels == 40 && ctx.led_calls == 1 && riscv_led_peak == 0x004000)
+			       ? "MATCH"
+			       : "BUG: unexpected count or color");
+
+		rv32_result oob_result = run_guest("test_oob.bin");
+
+		printf("rv32_emu: test_oob isolation check: %s\n",
+		       (oob_result == RV32_ERR_MEM_FAULT) ? "MATCH (fault trapped cleanly)"
+							    : "BUG: out-of-bounds access not trapped");
+
+		rv32_result loop_result = run_guest("test_loop.bin");
+
+		printf("rv32_emu: test_loop isolation check: %s\n",
+		       (loop_result == RV32_ERR_INSN_BUDGET_EXCEEDED)
+			       ? "MATCH (instruction budget enforced)"
+			       : "BUG: infinite loop not bounded");
+	}
 
 	printf("=== smoke test done ===\n");
 	return 0;

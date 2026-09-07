@@ -18,6 +18,14 @@
 # Claude Code session state, not project content.
 /.claude/
 
+# RISC-V sandbox research spike (see ncs/stravaV11_app/lib/source/riscv/
+# rv32_emu.h): guest binaries are build.sh output, not source -- generated
+# by a toolchain (gcc-riscv64-unknown-elf) that isn't part of the normal
+# west/Zephyr toolchain this repo otherwise depends on, so they're rebuilt
+# on demand rather than committed.
+/ncs/stravaV11_app/tools/riscv_guest/*.elf
+/ncs/stravaV11_app/tools/riscv_guest/*.bin
+
 # User-provided ANT+ license key (not build-generated -- placed here
 # deliberately). stravaV11_fw/CMakeLists.txt extracts the key string from
 # this header at configure time and feeds it to Kconfig's

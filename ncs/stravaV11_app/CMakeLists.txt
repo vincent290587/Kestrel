@@ -14,6 +14,15 @@ add_definitions(-DTDD)
 set(LIB_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/lib)
 set(ADAPTERS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/adapters)
 
+# RISC-V sandbox research spike (see rv32_emu.h): guest binaries are built
+# separately, offline, by tools/riscv_guest/build.sh (needs
+# gcc-riscv64-unknown-elf, not part of this app's own build) and loaded
+# from disk at runtime -- native_sim is a real Linux process, so this
+# smoke test just fopen()s them rather than embedding them as a header.
+target_compile_definitions(app PRIVATE
+  RISCV_GUEST_BIN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tools/riscv_guest"
+)
+
 target_include_directories(app PRIVATE
   ${LIB_ROOT}
   ${LIB_ROOT}/TDD
@@ -26,6 +35,7 @@ target_include_directories(app PRIVATE
   ${LIB_ROOT}/source/parsers
   ${LIB_ROOT}/source/sensors
   ${LIB_ROOT}/source/maps
+  ${LIB_ROOT}/source/riscv
   ${LIB_ROOT}/libraries/utils
   ${LIB_ROOT}/libraries/kalman
   ${LIB_ROOT}/libraries/VParser
@@ -55,6 +65,7 @@ target_sources(app PRIVATE
   ${LIB_ROOT}/source/display/notifications.c
   ${LIB_ROOT}/source/maps/map_tile.c
   ${LIB_ROOT}/source/maps/map_render.cpp
+  ${LIB_ROOT}/source/riscv/rv32_emu.c
   ${LIB_ROOT}/libraries/utils/utils.c
   ${LIB_ROOT}/libraries/utils/WString.cpp
   ${LIB_ROOT}/libraries/kalman/kalman_ext.cpp
