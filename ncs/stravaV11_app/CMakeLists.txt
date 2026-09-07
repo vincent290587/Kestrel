@@ -52,6 +52,7 @@ target_sources(app PRIVATE
   ${LIB_ROOT}/source/model/Locator.cpp
   ${LIB_ROOT}/source/display/SegmentManager.cpp
   ${LIB_ROOT}/source/display/Zoom.cpp
+  ${LIB_ROOT}/source/display/notifications.c
   ${LIB_ROOT}/source/maps/map_tile.c
   ${LIB_ROOT}/source/maps/map_render.cpp
   ${LIB_ROOT}/libraries/utils/utils.c
@@ -68,7 +69,7 @@ target_sources(app PRIVATE
   ${ADAPTERS_ROOT}/fram_stub.c
   ${ADAPTERS_ROOT}/gps_mgmt_stub.cpp
   ${ADAPTERS_ROOT}/millis_zephyr.c
-  src/notifications_stub.c
+  ${ADAPTERS_ROOT}/drv_ws2812_stub.c
   src/globals.cpp
   src/main.cpp
 )

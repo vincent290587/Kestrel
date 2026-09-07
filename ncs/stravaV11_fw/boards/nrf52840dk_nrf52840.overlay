@@ -17,6 +17,7 @@
  */
 
 #include <zephyr/dt-bindings/gpio/arduino-header-r3.h>
+#include <zephyr/dt-bindings/led/led.h>
 
 / {
 	chosen {
@@ -45,10 +46,15 @@
 
 &arduino_spi {
 	status = "okay";
-	/* index 0 -> ls027 (D10), index 1 -> SD card (D9), both placeholder
-	 * pins -- see the Phase 4 storage note further down. */
+	/* index 0 -> ls027 (D10), index 1 -> SD card (D9), index 2 -> WS2812
+	 * status LED (D8) -- all placeholder pins except the WS2812 CS,
+	 * which is placeholder by design even on the real board (see the
+	 * spi3/ws2812 note in the custom board's own .dts: the LED only
+	 * reads MOSI, CS is never actually wired to it there either). See
+	 * the Phase 4 storage note further down for ls027/SD. */
 	cs-gpios = <&arduino_header ARDUINO_HEADER_R3_D10 GPIO_ACTIVE_HIGH>,
-		   <&arduino_header ARDUINO_HEADER_R3_D9 GPIO_ACTIVE_LOW>;
+		   <&arduino_header ARDUINO_HEADER_R3_D9 GPIO_ACTIVE_LOW>,
+		   <&arduino_header ARDUINO_HEADER_R3_D8 GPIO_ACTIVE_LOW>;
 
 	ls027: ls0xx@0 {
 		compatible = "sharp,ls0xx";
@@ -78,6 +84,29 @@
 			disk-name = "SD";
 			status = "okay";
 		};
+	};
+
+	/* WS2812 status LED (NEO_PIN on the real board) -- see
+	 * stravaV11_fw/adapters/drv_ws2812.c and lib/source/display/
+	 * notifications.c. Same spi-one-frame/spi-zero-frame/
+	 * spi-max-frequency/color-mapping as the custom board's own node;
+	 * this DK placeholder exists purely so the shared notifications_demo.c
+	 * builds and runs cleanly here too, not because a real LED is wired up. */
+	led_strip: ws2812@2 {
+		compatible = "worldsemi,ws2812-spi";
+		reg = <2>;
+		spi-max-frequency = <4000000>;
+
+		chain-length = <1>;
+		color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
+		spi-one-frame = <0x70>;
+		spi-zero-frame = <0x40>;
+	};
+};
+
+/ {
+	aliases {
+		led-strip = &led_strip;
 	};
 };
 

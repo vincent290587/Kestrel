@@ -29,6 +29,8 @@
 #include "map_tile.h"
 #include "test_tile_data.h"
 #include "map_render.h"
+#include "notifications.h"
+#include "drv_ws2812_stub.h"
 
 extern UserSettings u_settings;
 
@@ -225,6 +227,41 @@ int main(void)
 	uint32_t after = gfx.countSetPixels();
 	printf("ZephyrGFX: buffer=%zu bytes, pixels set %u -> %u (%s)\n", gfx.getBufferSize(), before,
 	       after, after > before ? "drew something" : "BUG: nothing drawn");
+
+	// --- notifications.c: port of stravaV10's WS2812 status-LED animation
+	// state machine, backed here by drv_ws2812_stub.c (no real LED on
+	// native_sim, just tracks the last color set). Drives a one-shot
+	// "boot flash" pulse the same way main.cpp does on real hardware
+	// (SET_NEO_EVENT_RED + notifications_setNotify), then ticks
+	// notifications_tasks() through a full ramp-up/ramp-down cycle and
+	// checks the color actually moves away from off and back again --
+	// not just that it compiles and doesn't crash. ---
+	notifications_init(0);
+	uint32_t idle_color = drv_ws2812_stub_get_last_color();
+
+	sNeopixelOrders boot_flash;
+
+	SET_NEO_EVENT_RED(boot_flash, eNeoEventNotify, 0);
+	notifications_setNotify(&boot_flash);
+
+	uint32_t peak_color = 0;
+
+	for (int i = 0; i < 15; i++) {
+		notifications_tasks();
+		uint32_t c = drv_ws2812_stub_get_last_color();
+
+		if (c > peak_color) {
+			peak_color = c;
+		}
+	}
+
+	uint32_t settled_color = drv_ws2812_stub_get_last_color();
+
+	printf("notifications: idle=0x%06x peak=0x%06x settled=0x%06x (%s)\n", idle_color,
+	       peak_color, settled_color,
+	       (idle_color == 0 && peak_color > 0 && settled_color == 0)
+		       ? "pulse ramped up and back down"
+		       : "BUG: pulse didn't ramp correctly");
 
 	printf("=== smoke test done ===\n");
 	return 0;

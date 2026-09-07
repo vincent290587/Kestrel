@@ -15,6 +15,7 @@
 /dts-v1/;
 #include <nordic/nrf52840_qiaa.dtsi>
 #include <nordic/nrf52840_partition.dtsi>
+#include <zephyr/dt-bindings/led/led.h>
 #include "stravav11_nrf52840-pinctrl.dtsi"
 
 / {
@@ -291,6 +292,42 @@ sd_spi: &spi1 {
 		 * only because the devicetree binding requires them. */
 		disk-name = "NOR_DT_UNUSED";
 		cache-size = <4096>;
+	};
+};
+
+/* WS2812 status LED (NEO_PIN, stravaV10's drivers/drv_ws2812.c +
+ * source/display/notifications.c) -- see the spi3 pinctrl comment for why
+ * SPI. Chain length 1: NEO_PIN drives a single status LED on this board,
+ * not a strip -- confirm with the user if that assumption is ever wrong,
+ * it's a one-line change. spi-one-frame/spi-zero-frame/spi-max-frequency
+ * are the exact values from Zephyr's own nrf52-bindings.h sample
+ * (samples/drivers/led/led_strip/nrf52-bindings.h) for driving WS2812
+ * over SPI on this chip family -- not guessed. color-mapping is GRB,
+ * matching both the WS2812 wire protocol standard and stravaV10's own
+ * drv_ws2812.c comment ("stored as GRB"). */
+&spi3 {
+	compatible = "nordic,nrf-spim";
+	status = "okay";
+	cs-gpios = <&gpio1 10 GPIO_ACTIVE_LOW>; /* unused by WS2812, see pinctrl comment */
+	pinctrl-0 = <&spi3_default>;
+	pinctrl-1 = <&spi3_sleep>;
+	pinctrl-names = "default", "sleep";
+
+	led_strip: ws2812@0 {
+		compatible = "worldsemi,ws2812-spi";
+		reg = <0>; /* ignored, but necessary for SPI bindings */
+		spi-max-frequency = <4000000>;
+
+		chain-length = <1>;
+		color-mapping = <LED_COLOR_ID_GREEN LED_COLOR_ID_RED LED_COLOR_ID_BLUE>;
+		spi-one-frame = <0x70>;
+		spi-zero-frame = <0x40>;
+	};
+};
+
+/ {
+	aliases {
+		led-strip = &led_strip;
 	};
 };
 

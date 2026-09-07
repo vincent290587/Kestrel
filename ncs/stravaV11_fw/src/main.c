@@ -49,6 +49,7 @@
 #include "usb_demo.h"
 #include "cmd_console.h"
 #include "disk_raw_test.h"
+#include "notifications_demo.h"
 
 /*
  * The custom PCB latches its own regulator ON via the STC3100 fuel gauge's
@@ -692,6 +693,7 @@ int main(void)
 	task_demo_start();
 	power_demo_start();
 	poll_demo_start();
+	notifications_demo_start();
 	usb_demo_start();
 
 	/* sd_stress_demo and map_screen_demo both do real, recurring SD-card

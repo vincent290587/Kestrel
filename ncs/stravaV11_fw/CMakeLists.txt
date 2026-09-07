@@ -59,6 +59,7 @@ target_include_directories(app PRIVATE
   lib/source/vue
   lib/source/maps
   lib/source/display
+  lib/source/parsers
   adapters
 )
 
@@ -82,10 +83,12 @@ target_sources(app PRIVATE
   src/map_demo.c
   src/map_screen_demo.c
   src/sd_stress_demo.c
+  src/notifications_demo.c
   lib/bt_cp_client.c
   lib/source/maps/map_tile.c
   lib/source/maps/map_render.cpp
   lib/source/display/Zoom.cpp
+  lib/source/display/notifications.c
   lib/libraries/AdafruitGFX/Adafruit_GFX.cpp
   lib/libraries/AdafruitGFX/Print.cpp
   lib/libraries/utils/WString.cpp
@@ -95,4 +98,5 @@ target_sources(app PRIVATE
   lib/source/vue/ZephyrGFX.cpp
   adapters/gps_mgmt_stub.cpp
   adapters/millis_zephyr.c
+  adapters/drv_ws2812.c
 )
