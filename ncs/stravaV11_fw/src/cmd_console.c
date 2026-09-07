@@ -33,6 +33,7 @@
 #include "ant_dm_demo.h"
 #include "stc3100_demo.h"
 #include "smp_demo.h"
+#include "ble_demo.h"
 #include "cmd_console.h"
 
 LOG_MODULE_REGISTER(cmd_console, LOG_LEVEL_INF);
@@ -87,12 +88,14 @@ static void handle_command(const char *cmd)
 		stc3100_demo_log_reading();
 	} else if (strcmp(cmd, "BLE STATUS") == 0) {
 		smp_demo_log_status();
+	} else if (strcmp(cmd, "CPS STATUS") == 0) {
+		ble_demo_log_status();
 	} else {
 		LOG_WRN("cmd_console: unknown command \"%s\" (try \"SIM START\", \"SIM STOP\", "
 			"\"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
 			"\"DISK TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
 			"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", "
-			"\"BATT\", or \"BLE STATUS\")",
+			"\"BATT\", \"BLE STATUS\", or \"CPS STATUS\")",
 			cmd);
 	}
 }

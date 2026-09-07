@@ -54,6 +54,13 @@ enum ble_matched_service {
 
 static enum ble_matched_service matched_service;
 
+static bool m_cps_discovered;
+static uint32_t m_cps_notif_count;
+static int16_t m_last_power_w;
+
+static bool m_hrs_discovered;
+static uint32_t m_hrs_notif_count;
+
 static void measurement_cb(struct bt_cp_client *cp_c, const struct bt_cp_client_measurement *meas,
 			    int err)
 {
@@ -61,6 +68,8 @@ static void measurement_cb(struct bt_cp_client *cp_c, const struct bt_cp_client_
 		LOG_WRN("Cycling Power Measurement parse error: %d", err);
 		return;
 	}
+	m_cps_notif_count++;
+	m_last_power_w = meas->inst_power;
 	LOG_INF("Power measurement: %d W", meas->inst_power);
 }
 
@@ -78,6 +87,7 @@ static void cps_discovery_completed_cb(struct bt_gatt_dm *dm, void *ctx)
 	int err;
 
 	LOG_INF("Cycling Power Service discovered");
+	m_cps_discovered = true;
 
 	err = bt_cp_client_handles_assign(dm, &cp_c);
 	if (err) {
@@ -124,6 +134,7 @@ static void hrs_measurement_cb(struct bt_hrs_client *hrs_c, const struct bt_hrs_
 		LOG_WRN("Heart Rate Measurement parse error: %d", err);
 		return;
 	}
+	m_hrs_notif_count++;
 	LOG_INF("Heart rate: %u bpm%s", meas->hr_value,
 		meas->flags.rr_intervals_present ? " (RR intervals present)" : "");
 }
@@ -133,6 +144,7 @@ static void hrs_discovery_completed_cb(struct bt_gatt_dm *dm, void *ctx)
 	int err;
 
 	LOG_INF("Heart Rate Service discovered");
+	m_hrs_discovered = true;
 
 	err = bt_hrs_client_handles_assign(dm, &hrs_c);
 	if (err) {
@@ -324,4 +336,13 @@ void ble_demo_start(void)
 	}
 
 	scan_start();
+}
+
+void ble_demo_log_status(void)
+{
+	LOG_INF("ble_demo: connected=%d matched_service=%d", default_conn != NULL,
+		matched_service);
+	LOG_INF("ble_demo: CPS discovered=%d notif_count=%u last_power=%d W", m_cps_discovered,
+		m_cps_notif_count, m_last_power_w);
+	LOG_INF("ble_demo: HRS discovered=%d notif_count=%u", m_hrs_discovered, m_hrs_notif_count);
 }
