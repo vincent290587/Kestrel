@@ -13,6 +13,7 @@
 #include "hrm_demo.h"
 #include "bsc_demo.h"
 #include "gps_demo.h"
+#include "stc3100_demo.h"
 #include "gfx_demo.h"
 
 #include "sensor_screen_demo.h"
@@ -30,9 +31,12 @@ static void sensor_screen_work_handler(struct k_work *work)
 	float alt_m = 0.f;
 	bool has_alt = gps_demo_get_altitude(&alt_m);
 
+	float batt_percent = 0.f;
+	bool has_batt = stc3100_demo_get_percent(&batt_percent);
+
 	gfx_demo_show_sensors(hrm_demo_get_bpm(), hrm_demo_get_rr_ms(), hrm_demo_is_paired(),
 			      bsc_demo_get_speed(), bsc_demo_get_cadence(), bsc_demo_is_paired(),
-			      alt_m, has_alt);
+			      alt_m, has_alt, batt_percent, has_batt);
 
 	k_work_schedule(&sensor_screen_work, K_MSEC(SENSOR_SCREEN_REFRESH_MS));
 }

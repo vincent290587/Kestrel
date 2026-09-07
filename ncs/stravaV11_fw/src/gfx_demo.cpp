@@ -108,7 +108,8 @@ void gfx_demo(void)
 }
 
 void gfx_demo_show_sensors(uint8_t bpm, uint16_t rr_ms, bool hrm_paired, uint32_t speed_kph,
-			    uint32_t cadence_rpm, bool bsc_paired, float alt_m, bool has_alt)
+			    uint32_t cadence_rpm, bool bsc_paired, float alt_m, bool has_alt,
+			    float batt_percent, bool has_batt)
 {
 #if DT_HAS_CHOSEN(zephyr_display)
 	if (!gfx_ready()) {
@@ -156,11 +157,21 @@ void gfx_demo_show_sensors(uint8_t bpm, uint16_t rr_ms, bool hrm_paired, uint32_
 		snprintf(alt_line, sizeof(alt_line), "ALT -- (no fix)");
 	}
 
+	static char batt_line[24];
+
+	/* Whole percent only, same reasoning as alt_line above. */
+	if (has_batt) {
+		snprintf(batt_line, sizeof(batt_line), "BATT %d%%", (int)batt_percent);
+	} else {
+		snprintf(batt_line, sizeof(batt_line), "BATT -- (n/a)");
+	}
+
 	gfx_print_centered(hr_line, 100, 3);
 	gfx_print_centered(rr_line, 150, 2);
 	gfx_print_centered(spd_line, 230, 3);
 	gfx_print_centered(cad_line, 280, 2);
 	gfx_print_centered(alt_line, 330, 2);
+	gfx_print_centered(batt_line, 370, 2);
 
 	gfx_push();
 #else
@@ -172,6 +183,8 @@ void gfx_demo_show_sensors(uint8_t bpm, uint16_t rr_ms, bool hrm_paired, uint32_
 	ARG_UNUSED(bsc_paired);
 	ARG_UNUSED(alt_m);
 	ARG_UNUSED(has_alt);
+	ARG_UNUSED(batt_percent);
+	ARG_UNUSED(has_batt);
 #endif
 }
 

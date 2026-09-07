@@ -31,6 +31,7 @@
 #include "sd_format.h"
 #include "notifications_demo.h"
 #include "ant_dm_demo.h"
+#include "stc3100_demo.h"
 #include "cmd_console.h"
 
 LOG_MODULE_REGISTER(cmd_console, LOG_LEVEL_INF);
@@ -81,11 +82,14 @@ static void handle_command(const char *cmd)
 		ant_dm_demo_search_validate(atoi(&cmd[8]));
 	} else if (strcmp(cmd, "DM CANCEL") == 0) {
 		ant_dm_demo_search_cancel();
+	} else if (strcmp(cmd, "BATT") == 0) {
+		stc3100_demo_log_reading();
 	} else {
 		LOG_WRN("cmd_console: unknown command \"%s\" (try \"SIM START\", \"SIM STOP\", "
 			"\"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
 			"\"DISK TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
-			"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", or \"DM CANCEL\")",
+			"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", or "
+			"\"BATT\")",
 			cmd);
 	}
 }
@@ -170,5 +174,5 @@ void cmd_console_start(void)
 	LOG_INF("cmd_console: ready on RTT down channel 0 and USB CDC-ACM -- \"SIM START\", "
 		"\"SIM STOP\", \"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
 		"\"DISK TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
-		"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\"");
+		"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", \"BATT\"");
 }

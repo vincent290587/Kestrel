@@ -48,6 +48,7 @@
 #include "task_demo.h"
 #include "power_demo.h"
 #include "poll_demo.h"
+#include "stc3100_demo.h"
 #include "usb_demo.h"
 #include "cmd_console.h"
 #include "disk_raw_test.h"
@@ -697,6 +698,7 @@ int main(void)
 	task_demo_start();
 	power_demo_start();
 	poll_demo_start();
+	stc3100_demo_start();
 	notifications_demo_start();
 	usb_demo_start();
 

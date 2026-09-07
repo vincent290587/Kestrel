@@ -11,12 +11,14 @@ extern "C" {
 
 void gfx_demo(void);
 
-/* Redraws the screen with live ANT+ HRM/BSC values (Phase 11) plus GPS
- * altitude -- replaces whatever gfx_demo() last drew. Values are shown
- * as "--" when their *_paired/has_alt flag is false (searching/no fix,
- * not stale-but-labeled-live data). */
+/* Redraws the screen with live ANT+ HRM/BSC values (Phase 11), GPS
+ * altitude, and STC3100 battery percentage -- replaces whatever
+ * gfx_demo() last drew. Values are shown as "--" when their
+ * *_paired/has_alt/has_batt flag is false (searching/no fix/no reading
+ * yet, not stale-but-labeled-live data). */
 void gfx_demo_show_sensors(uint8_t bpm, uint16_t rr_ms, bool hrm_paired, uint32_t speed_kph,
-			    uint32_t cadence_rpm, bool bsc_paired, float alt_m, bool has_alt);
+			    uint32_t cadence_rpm, bool bsc_paired, float alt_m, bool has_alt,
+			    float batt_percent, bool has_batt);
 
 /* Renders a parsed map_tile.c-format buffer (e.g. loaded from the SD
  * card by map_demo.c) centered at (center_lat, center_lon), at the fixed
