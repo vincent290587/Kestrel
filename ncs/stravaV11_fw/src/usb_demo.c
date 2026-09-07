@@ -4,12 +4,14 @@
  *
  * stravaV10's usb_cdc.c is actually a composite CDC-ACM + MSC (mass
  * storage) device -- the MSC half exposes the SD card/NOR flash as a USB
- * drive for unloading GPX/segment files. The SD-card half of that is now
- * ported below (USBD_DEFINE_MSC_LUN against disk "SD", the same
- * disk_access device sd_fat_demo()/map_screen_demo/sd_stress_demo already
- * use). NOR flash still isn't a LUN here: it would need its own
- * disk_access registration, still blocked on the Partition Manager issue
- * from Phase 4 (see CLAUDE.md) -- unrelated to the SD path, a separate gap.
+ * drive for unloading GPX/segment files. Both LUNs are ported below:
+ * "SD" (disk_access device sd_fat_demo()/map_screen_demo/sd_stress_demo
+ * already use) and "NOR" (the external QSPI flash, disk_access-registered
+ * via Partition Manager -- see pm_static_<board>.yml and the
+ * "nordic,pm-ext-flash" chosen entry in each board's devicetree file,
+ * closing the gap Phase 4 left open). NOR is deliberately unformatted -- it's raw
+ * data, not a filesystem, unlike the SD card -- so it shows up on the host
+ * as a second, blank-looking USB drive; that's expected, not a bug.
  *
  * Real hazard worth calling out explicitly: this app's own demos
  * (sd_stress_demo, map_screen_demo) mount/read/write "SD" via the fs layer
@@ -48,6 +50,13 @@ LOG_MODULE_REGISTER(usb_demo, LOG_LEVEL_INF);
  * boards/vincent/stravav11/stravav11_nrf52840.dts) -- the same disk every
  * SD demo in main.c already opens by that name. */
 USBD_DEFINE_MSC_LUN(sd, "SD", "stravaV11", "SD Card", "0.00");
+
+/* Disk name "NOR" matches pm_static_<board>.yml's external_flash_disk
+ * partition's extra_params.disk_name -- that's the actual name flashdisk.c
+ * registers with disk_access for this partition, the devicetree
+ * nor-msc-disk node's own "disk-name" property is a separate, unused
+ * placeholder (see the comment next to that node). */
+USBD_DEFINE_MSC_LUN(nor, "NOR", "stravaV11", "Raw NOR Flash", "0.00");
 
 static void usbd_msg_cb(struct usbd_context *const ctx, const struct usbd_msg *msg)
 {

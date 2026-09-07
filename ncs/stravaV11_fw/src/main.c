@@ -487,6 +487,13 @@ static void storage_demo(void)
 	 * proves the driver reports a clean error instead of hanging. */
 	disk_raw_ioctl_demo("SD");
 
+	/* Raw NOR-as-USB-disk (see usb_demo.c and the mx25r64/EXTERNAL_FLASH_DISK
+	 * devicetree note): confirms disk_access itself reports the real
+	 * sector count/size for "NOR" independent of USB/host behavior --
+	 * the write/read half is skipped since the sector size here (4096)
+	 * doesn't match this helper's fixed 512-byte test buffer. */
+	disk_raw_ioctl_demo("NOR");
+
 #if defined(CONFIG_FAT_FILESYSTEM_ELM)
 	sd_fat_demo();
 #endif

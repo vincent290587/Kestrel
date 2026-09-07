@@ -1,0 +1,25 @@
+# Raw-NOR-as-USB-disk (see the mx25r64 node in boards/nrf52840dk_nrf52840.overlay
+# and usb_demo.c). The DK's on-board MX25R6435F is 8MB (0x800000) -- this
+# spans the whole chip as one unformatted disk_access device, matching the
+# "affiliation: disk" contract flashdisk.c's PM code path expects.
+#
+# extra_params keys MUST be "disk_"-prefixed (disk_name/disk_cache_size/
+# disk_sector_size/disk_read_only) -- flashdisk.c's own doc comment gives
+# them unprefixed (name/cache_size/...), which is stale/wrong: the macro
+# that actually consumes them is
+# `PM_##name##_EXTRA_PARAM_disk_##param`, requiring the "disk_" prefix in
+# the generated symbol, which only happens if the yaml key itself carries
+# it. Confirmed by reading nrf/scripts/partition_manager_output.py (which
+# emits `PM_<NAME>_EXTRA_PARAM_<epkey>` verbatim from whatever key is
+# given) against flashdisk.c's macro expansion, not by trusting the
+# comment.
+external_flash_disk:
+  address: 0x0
+  region: external_flash
+  size: 0x800000
+  affiliation: disk
+  extra_params:
+    disk_name: "NOR"
+    disk_cache_size: 4096
+    disk_sector_size: 4096
+    disk_read_only: 0

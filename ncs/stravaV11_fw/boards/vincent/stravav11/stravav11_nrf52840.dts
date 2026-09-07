@@ -23,6 +23,10 @@
 
 	chosen {
 		zephyr,display = &ls027;
+		/* Tells Partition Manager mx25r64 (the real MT25QL128 chip
+		 * here) is a valid "external_flash" region -- see the
+		 * raw-NOR-disk node near the mx25r64 definition below. */
+		nordic,pm-ext-flash = &mx25r64;
 	};
 
 	leds {
@@ -230,6 +234,63 @@ sd_spi: &spi1 {
 		jedec-id = [20 ba 18];
 		size = <134217728>;
 		quad-enable-requirements = "NONE";
+	};
+};
+
+/* Raw NOR-as-USB-disk: the chip holds raw data, not a filesystem, so it's
+ * exposed as a second, unformatted USB MSC LUN (see usb_demo.c) rather
+ * than mounting anything. Needs *two* pieces together: the
+ * "nordic,pm-ext-flash" chosen entry above (so PM treats mx25r64 as an
+ * "external_flash" region at all) and the pm_static_stravav11_nrf52840.yml
+ * partition (region: external_flash, affiliation: disk) that supplies the
+ * name, cache_size, sector_size and read_only extra_params flashdisk.c's
+ * PM-affiliation code path reads -- a hand-written devicetree
+ * fixed-partitions node alone (tried during Phase 4, DK-only at the time)
+ * isn't visible to PM's own scan for that half.
+ *
+ * What that path does NOT get from pm_static.yml, despite being in the
+ * "PM" branch: offset/size/area-id. Those come from
+ * FIXED_PARTITION_OFFSET/SIZE/ID(n), which -- confirmed by reading
+ * flash_map.h -- expand to DT_REG_ADDR/SIZE(DT_NODELABEL(n)), i.e. a
+ * plain devicetree lookup, always, regardless of Partition Manager. `n`
+ * is the affiliation macro's own uppercased partition-name token
+ * (PM_FOREACH_AFFILIATED_TO_disk(fn) = fn(EXTERNAL_FLASH_DISK), confirmed
+ * in the build's pm.config) -- so this devicetree node's *label* must be
+ * that exact uppercase token for FIXED_PARTITION_SIZE to resolve at all.
+ * First attempt used an arbitrary lowercase label + a tiny 0x1000
+ * placeholder reg (reasoning: "PM supplies the real numbers") and built
+ * clean but silently produced a real, zero-byte USB disk on real
+ * hardware (lsblk: "0B") -- DT_NODELABEL of a non-matching label doesn't
+ * error, it just resolves to nothing and DT_REG_SIZE of that is 0. Fixed
+ * by matching both the label and the reg range to the pm_static.yml
+ * partition exactly; the two must be kept in sync by hand since nothing
+ * cross-checks them. */
+&mx25r64 {
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		/* Label and reg MUST match pm_static_stravav11_nrf52840.yml's
+		 * external_flash_disk partition (address 0x0, size 0x1000000)
+		 * -- see the comment above for why. */
+		EXTERNAL_FLASH_DISK: partition@0 {
+			label = "external_flash_disk";
+			reg = <0x0 0x1000000>;
+		};
+	};
+};
+
+/ {
+	nor_msc_disk: nor-msc-disk {
+		compatible = "zephyr,flash-disk";
+		partition = <&EXTERNAL_FLASH_DISK>;
+		/* disk-name/cache-size here are unused (see comment above --
+		 * flashdisk.c's PM-affiliation path takes the real disk name
+		 * from pm_static.yml's extra_params.disk_name instead), kept
+		 * only because the devicetree binding requires them. */
+		disk-name = "NOR_DT_UNUSED";
+		cache-size = <4096>;
 	};
 };
 

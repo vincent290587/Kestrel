@@ -1,0 +1,18 @@
+# Raw-NOR-as-USB-disk (see the mx25r64 node in
+# boards/vincent/stravav11/stravav11_nrf52840.dts and usb_demo.c). The real
+# chip here is a Micron MT25QL128, 16MB (0x1000000) -- see CLAUDE.md Phase
+# 11 for the JEDEC-ID confirmation of its identity. Spans the whole chip as
+# one unformatted disk_access device.
+#
+# extra_params keys MUST be "disk_"-prefixed -- see
+# pm_static_nrf52840dk_nrf52840.yml's comment for why.
+external_flash_disk:
+  address: 0x0
+  region: external_flash
+  size: 0x1000000
+  affiliation: disk
+  extra_params:
+    disk_name: "NOR"
+    disk_cache_size: 4096
+    disk_sector_size: 4096
+    disk_read_only: 0
