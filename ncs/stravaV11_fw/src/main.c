@@ -39,6 +39,7 @@
 #include "hrm_demo.h"
 #include "bsc_demo.h"
 #include "fec_demo.h"
+#include "ant_dm_demo.h"
 #include "gfx_demo.h"
 #include "gps_demo.h"
 #include "map_demo.h"
@@ -691,6 +692,7 @@ int main(void)
 	hrm_demo_start();
 	bsc_demo_start();
 	fec_demo_start();
+	ant_dm_demo_start();
 	ble_demo_start();
 	task_demo_start();
 	power_demo_start();

@@ -70,6 +70,7 @@ target_sources(app PRIVATE
   src/hrm_demo.c
   src/bsc_demo.c
   src/fec_demo.c
+  src/ant_dm_demo.c
   src/gfx_demo.cpp
   src/gps_demo.cpp
   src/gps_sim_demo.c
@@ -87,6 +88,7 @@ target_sources(app PRIVATE
   src/notifications_demo.c
   lib/bt_cp_client.c
   lib/ant_fec.c
+  lib/ant_device_manager.c
   lib/source/maps/map_tile.c
   lib/source/maps/map_render.cpp
   lib/source/display/Zoom.cpp

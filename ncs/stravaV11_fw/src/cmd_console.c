@@ -11,6 +11,7 @@
  */
 
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include <zephyr/kernel.h>
@@ -29,6 +30,7 @@
 #include "disk_raw_test.h"
 #include "sd_format.h"
 #include "notifications_demo.h"
+#include "ant_dm_demo.h"
 #include "cmd_console.h"
 
 LOG_MODULE_REGISTER(cmd_console, LOG_LEVEL_INF);
@@ -67,10 +69,23 @@ static void handle_command(const char *cmd)
 		notifications_demo_trigger_green();
 	} else if (strcmp(cmd, "LED BLUE") == 0) {
 		notifications_demo_trigger_blue();
+	} else if (strcmp(cmd, "DM SEARCH HRM") == 0) {
+		ant_dm_demo_search_start(ANT_DM_SENSOR_HRM);
+	} else if (strcmp(cmd, "DM SEARCH BSC") == 0) {
+		ant_dm_demo_search_start(ANT_DM_SENSOR_BSC);
+	} else if (strcmp(cmd, "DM SEARCH FEC") == 0) {
+		ant_dm_demo_search_start(ANT_DM_SENSOR_FEC);
+	} else if (strcmp(cmd, "DM LIST") == 0) {
+		ant_dm_demo_search_list();
+	} else if (strncmp(cmd, "DM PICK ", 8) == 0) {
+		ant_dm_demo_search_validate(atoi(&cmd[8]));
+	} else if (strcmp(cmd, "DM CANCEL") == 0) {
+		ant_dm_demo_search_cancel();
 	} else {
 		LOG_WRN("cmd_console: unknown command \"%s\" (try \"SIM START\", \"SIM STOP\", "
 			"\"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
-			"\"DISK TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", or \"LED BLUE\")",
+			"\"DISK TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
+			"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", or \"DM CANCEL\")",
 			cmd);
 	}
 }
@@ -154,5 +169,6 @@ void cmd_console_start(void)
 
 	LOG_INF("cmd_console: ready on RTT down channel 0 and USB CDC-ACM -- \"SIM START\", "
 		"\"SIM STOP\", \"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
-		"\"DISK TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\"");
+		"\"DISK TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
+		"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\"");
 }
