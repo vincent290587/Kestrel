@@ -10,6 +10,15 @@
  * and the user explicitly asked for a constant zoom for now, set by one
  * easily-changeable value -- MAP_RENDER_ZOOM_LEVEL below. Change that
  * single define to zoom in/out; nothing else needs touching.
+ *
+ * Drawing every road at equal 1px weight, in file order, looked like an
+ * undifferentiated tangle on real glass. map_render.cpp now filters by
+ * road_class (dropping service/track and foot-only paths -- but keeping
+ * cycleways, since this is a cycling computer), draws thicker lines for
+ * major roads and cycleways, and draws in a fixed least-to-most-prominent
+ * order so major roads/cycleways aren't broken up by whatever else the
+ * tile happens to store after them. See map_render.cpp's own comments
+ * for the exact class/order/weight rules.
  */
 
 #ifndef MAP_RENDER_H_

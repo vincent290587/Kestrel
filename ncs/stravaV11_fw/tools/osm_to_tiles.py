@@ -89,8 +89,14 @@ ALT_UNKNOWN_M = -32768  # int16 sentinel: no ele tag on this node
 DEFAULT_EPSILON_DEG = 0.00015  # ~16.7m at the equator (Douglas-Peucker tolerance)
 
 # highway=* value -> road class byte. Ways with no matching tag are dropped.
-# Classes are ordered by importance (0 = most major) so a future renderer
-# can decimate by class at low zoom without needing a second field.
+# Classes 0-3 are ordered by importance (0 = most major), as before. Class
+# 5 (cycleway) was split out of the old catch-all "minor path" bucket --
+# this is a cycling computer, so the renderer (map_render.cpp) keeps and
+# emphasizes cycleways specifically while dropping the foot-only classes
+# (4, 6) it now sits between numerically. Not "ordered by importance"
+# for 4-6 the way 0-3 are; 5 is deliberately out of numeric order with
+# 4/6 because it predates this split and changing it would mean
+# regenerating every already-embedded tile fixture for no benefit.
 ROAD_CLASSES = {
     "motorway": 0, "motorway_link": 0,
     "trunk": 0, "trunk_link": 0,
@@ -99,7 +105,8 @@ ROAD_CLASSES = {
     "tertiary": 3, "tertiary_link": 3,
     "unclassified": 3, "residential": 3,
     "service": 4, "track": 4,
-    "cycleway": 5, "path": 5, "footway": 5, "bridleway": 5,
+    "cycleway": 5,
+    "path": 6, "footway": 6, "bridleway": 6,
 }
 
 HEADER_FMT = "<8siiHxx"

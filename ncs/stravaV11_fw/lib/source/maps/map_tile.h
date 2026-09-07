@@ -36,6 +36,14 @@ extern "C" {
  * most ordinary road/path points -- see that script's docstring). */
 #define MAP_TILE_ALT_UNKNOWN_M (-32768)
 
+/* Must match tools/osm_to_tiles.py's ROAD_CLASSES exactly. Only cycleway
+ * gets a named constant -- it's the one class map_render.cpp treats
+ * specially (kept and drawn with extra visual weight, since this is a
+ * cycling computer), everything else is referred to by its plain numeric
+ * class (0-3 motorway/trunk .. tertiary/residential, most to least major;
+ * 4 service/track; 6 foot-only path/footway/bridleway). */
+#define MAP_TILE_ROAD_CLASS_CYCLEWAY 5
+
 enum map_tile_error {
 	MAP_TILE_OK = 0,
 	MAP_TILE_ERR_TOO_SHORT = -1, /* buffer shorter than the fixed header */
