@@ -18,6 +18,9 @@
 # Claude Code session state, not project content.
 /.claude/
 
+# Personal working TODO list, not project documentation.
+/todo.md
+
 # RISC-V sandbox research spike (see ncs/stravaV11_app/lib/source/riscv/
 # rv32_emu.h): guest binaries are build.sh output, not source -- generated
 # by a toolchain (gcc-riscv64-unknown-elf) that isn't part of the normal
