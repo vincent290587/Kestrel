@@ -72,6 +72,7 @@ target_sources(app PRIVATE
   src/fec_demo.c
   src/ant_dm_demo.c
   src/stc3100_demo.c
+  src/smp_demo.c
   src/gfx_demo.cpp
   src/gps_demo.cpp
   src/gps_sim_demo.c

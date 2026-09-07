@@ -35,6 +35,7 @@
 #endif
 
 #include "ble_demo.h"
+#include "smp_demo.h"
 #include "ant_demo.h"
 #include "hrm_demo.h"
 #include "bsc_demo.h"
@@ -695,6 +696,7 @@ int main(void)
 	fec_demo_start();
 	ant_dm_demo_start();
 	ble_demo_start();
+	smp_demo_start();
 	task_demo_start();
 	power_demo_start();
 	poll_demo_start();

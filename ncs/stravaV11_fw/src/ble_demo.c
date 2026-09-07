@@ -195,6 +195,20 @@ static void connected(struct bt_conn *conn, uint8_t conn_err)
 
 	LOG_INF("Connected: %s", addr);
 
+	/* smp_demo.c added a BLE peripheral role (MCUmgr/SMP DFU transport)
+	 * alongside this file's own central role -- an inbound connection
+	 * from an SMP host client fires this same global BT_CONN_CB_DEFINE
+	 * callback, and without this check would wrongly run the
+	 * central-role GATT discovery-manager logic below (meant only for
+	 * OUR OWN outbound connections to CP/HRS peripherals) against a
+	 * connection where this device is actually the GATT server. */
+	struct bt_conn_info info;
+
+	bt_conn_get_info(conn, &info);
+	if (info.role != BT_CONN_ROLE_CENTRAL) {
+		return;
+	}
+
 	/* matched_service was recorded by scan_filter_match() when this
 	 * device's advertisement matched one of the two registered UUID
 	 * filters -- decides which single service to discover on this
