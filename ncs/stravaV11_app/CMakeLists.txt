@@ -81,6 +81,7 @@ target_sources(app PRIVATE
   ${ADAPTERS_ROOT}/gps_mgmt_stub.cpp
   ${ADAPTERS_ROOT}/millis_zephyr.c
   ${ADAPTERS_ROOT}/drv_ws2812_stub.c
+  ${ADAPTERS_ROOT}/gui_connector.c
   src/globals.cpp
   src/main.cpp
 )

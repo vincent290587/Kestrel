@@ -33,6 +33,11 @@
 #include "drv_ws2812_stub.h"
 #include "rv32_emu.h"
 #include "rv32_hostcalls.h"
+#include "gui_connector.h"
+
+#if defined(CONFIG_ARCH_POSIX)
+#include <unistd.h>
+#endif
 
 extern UserSettings u_settings;
 
@@ -99,6 +104,12 @@ static int32_t riscv_hostcall_handler(struct rv32_cpu *cpu, void *user_data, int
 int main(void)
 {
 	printf("=== stravaV11 logic-port smoke test ===\n");
+
+	// --- LS027simulator.jar bridge (see gui_connector.h) -- only active
+	// if the LS027_GUI env var is set, so normal automated runs of this
+	// smoke test are never blocked waiting for a GUI. Called this early
+	// so there's time to start the jar while it blocks on accept(). ---
+	gui_connector_init();
 
 	// --- geometry: Location/Point distance ---
 	Location paris(48.8566f, 2.3522f);
@@ -268,6 +279,11 @@ int main(void)
 		       (points_drawn == TEST_TILE_EXPECTED_POINT_COUNT && after < before)
 			       ? "drew something"
 			       : "BUG: nothing drawn or wrong point count");
+
+		gui_connector_update_ls027(map_gfx.getBuffer(), map_gfx.getBufferSize());
+#if defined(CONFIG_ARCH_POSIX)
+		sleep(2); // gives the simulator window time to actually show this frame
+#endif
 	}
 
 	// --- ZephyrGFX: draw text (real font rasterization) + shapes, then
@@ -289,6 +305,11 @@ int main(void)
 	uint32_t after = gfx.countSetPixels();
 	printf("ZephyrGFX: buffer=%zu bytes, pixels set %u -> %u (%s)\n", gfx.getBufferSize(), before,
 	       after, after > before ? "drew something" : "BUG: nothing drawn");
+
+	gui_connector_update_ls027(gfx.getBuffer(), gfx.getBufferSize());
+#if defined(CONFIG_ARCH_POSIX)
+	sleep(2); // gives the simulator window time to actually show this frame
+#endif
 
 	// --- notifications.c: port of stravaV10's WS2812 status-LED animation
 	// state machine, backed here by drv_ws2812_stub.c (no real LED on
