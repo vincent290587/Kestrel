@@ -54,6 +54,7 @@
 #include "cmd_console.h"
 #include "disk_raw_test.h"
 #include "notifications_demo.h"
+#include "settings_demo.h"
 
 /*
  * The custom PCB latches its own regulator ON via the STC3100 fuel gauge's
@@ -198,7 +199,17 @@ static void sensor_demo(const char *name, const struct device *dev)
 	printk("%s: ready, sensor_sample_fetch() -> %d\n", name, err);
 }
 
-static void fram_demo(void)
+/* Offset 0 is deliberately avoided here: it's UserSettings::
+ * FRAM_SETTINGS_ADDRESS (settings_demo.cpp), so writing this test pattern
+ * there would corrupt the real config block on every boot, before
+ * settings_demo_init() ever gets to read it -- found exactly this way
+ * (a bogus "wrong CRC" on every single boot, not just a blank chip's
+ * first one) when UserSettings was first wired up. 0x0100 is safely past
+ * sizeof(sUserParameters), well within the chip's real ~2048-byte size
+ * (Phase 3). */
+#define FRAM_DEMO_TEST_OFFSET 0x0100
+
+void fram_test_start(void)
 {
 	const struct device *fram = DEVICE_DT_GET(DT_NODELABEL(fram));
 
@@ -212,10 +223,10 @@ static void fram_demo(void)
 	static const uint8_t pattern[4] = { 0xDE, 0xAD, 0xBE, 0xEF };
 	uint8_t readback[sizeof(pattern)] = { 0 };
 
-	int err = eeprom_write(fram, 0, pattern, sizeof(pattern));
+	int err = eeprom_write(fram, FRAM_DEMO_TEST_OFFSET, pattern, sizeof(pattern));
 	printk("eeprom_write() -> %d\n", err);
 
-	err = eeprom_read(fram, 0, readback, sizeof(readback));
+	err = eeprom_read(fram, FRAM_DEMO_TEST_OFFSET, readback, sizeof(readback));
 	printk("eeprom_read() -> %d, %s\n", err,
 	       memcmp(pattern, readback, sizeof(pattern)) == 0 ? "MATCH" : "MISMATCH");
 }
@@ -684,7 +695,7 @@ int main(void)
 	i2c_demo();
 	sensor_demo("bme280", DEVICE_DT_GET(DT_NODELABEL(bme280)));
 	sensor_demo("fxos8700", DEVICE_DT_GET(DT_NODELABEL(fxos8700)));
-	fram_demo();
+	settings_demo_init();
 	storage_demo();
 	display_demo();
 	gfx_demo();

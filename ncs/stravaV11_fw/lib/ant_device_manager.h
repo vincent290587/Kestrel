@@ -3,18 +3,34 @@
  * rf/ant_device_manager.cpp -- the hardware-agnostic half only (the
  * dedup/add-to-list bookkeeping in ant_device_manager_search_add()).
  * The background-scan channel handling, search start/validate/cancel
- * orchestration, and UserSettings/FRAM persistence stravaV10's version
- * also has all belong to ant_dm_demo.c instead (same "portable list
+ * orchestration belongs to ant_dm_demo.c instead (same "portable list
  * logic vs. Zephyr plumbing" split ant_fec.{h,c}/fec_demo.c already
  * established for FE-C's wire format vs. channel handling).
  *
- * Not ported: UserSettings persistence of the chosen device number
+ * The four *_DEVICE_NUMBER constants below are carried over unmodified
+ * from stravaV10's real rf/ant_device_manager.h (they lived in the same
+ * file there, not split out) -- they're UserSettings::resetConfig()'s
+ * factory-default fallback, used only until a real search (ant_dm_demo.c)
+ * + FRAM-persisted pick overrides them. Deliberately NOT also carrying
+ * over that original header's *_CHANNEL_NUMBER constants: ant_dm_demo.c
+ * already includes this header and defines its own local
+ * HRM_CHANNEL_NUMBER/BSC_CHANNEL_NUMBER/FEC_CHANNEL_NUMBER (same values,
+ * different spelling -- 2 vs 0x02 etc.), so adding them here too would be
+ * a real macro-redefinition conflict, not just a style mismatch.
+ * hrm_demo.c/bsc_demo.c/fec_demo.c each still define their own
+ * *_DEVICE_NUMBER locally too, rather than including this header --
+ * those are hardcoded to this project's own real paired sensors (see
+ * CLAUDE.md's Phase 11 updates), a separate, more specific override that
+ * takes priority over these generic factory defaults regardless.
+ *
+ * UserSettings/FRAM persistence of the chosen device number
  * (stravaV10's ant_device_manager_search_validate() writes into
- * u_settings/FRAM) -- UserSettings isn't wired into stravaV11_fw at all
- * yet (only stravaV11_app has it, from Phase 1), so a validated pairing
- * here only reprograms the live ANT channel for this boot; it doesn't
- * survive a reset. Flagged as real follow-up work once UserSettings is
- * ported into stravaV11_fw.
+ * u_settings/FRAM) is still not wired into ant_dm_demo.c's own
+ * search_validate() -- UserSettings exists in stravaV11_fw now (see
+ * lib/source/model/UserSettings.{h,cpp}, adapters/fram_zephyr.c), but a
+ * validated pairing there still only reprograms the live ANT channel for
+ * that boot; it doesn't yet persist across a reset. Flagged as real
+ * follow-up work.
  */
 
 #ifndef ANT_DEVICE_MANAGER_H_
@@ -25,6 +41,12 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+#define HRM_DEVICE_NUMBER      17334U
+#define BSC_DEVICE_NUMBER      15568U
+#define BSC_DEVICE_TYPE        0x79
+#define GLASSES_DEVICE_NUMBER  0xFDDA
+#define TACX_DEVICE_NUMBER     15568U
 
 #define ANT_DM_MAX_CANDIDATES 8
 

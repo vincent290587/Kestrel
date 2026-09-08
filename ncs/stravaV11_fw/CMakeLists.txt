@@ -88,6 +88,7 @@ target_sources(app PRIVATE
   src/map_screen_demo.c
   src/sd_stress_demo.c
   src/notifications_demo.c
+  src/settings_demo.cpp
   lib/bt_cp_client.c
   lib/ant_fec.c
   lib/ant_device_manager.c
@@ -102,8 +103,10 @@ target_sources(app PRIVATE
   lib/libraries/utils/utils.c
   lib/libraries/TinyGPSPlus/TinyGPS++.cpp
   lib/source/model/Locator.cpp
+  lib/source/model/UserSettings.cpp
   lib/source/vue/ZephyrGFX.cpp
   adapters/gps_mgmt_stub.cpp
   adapters/millis_zephyr.c
   adapters/drv_ws2812.c
+  adapters/fram_zephyr.c
 )

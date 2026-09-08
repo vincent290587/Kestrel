@@ -97,9 +97,21 @@ SIM START / SIM STOP        -- replay the embedded GPX route into Locator (~1Hz)
 STRESS START / STRESS STOP  -- heavy SD-card write/read cycle every 500ms
 MAP START / MAP STOP        -- live GPS-driven map screen redraw loop
 DISK TEST                   -- one-shot raw disk_access read/write round trip (SD + NOR)
+FRAM TEST                   -- one-shot raw FRAM write/read round trip (a scratch offset,
+                                not UserSettings' own block -- see main.c's
+                                FRAM_DEMO_TEST_OFFSET)
 FORMAT SD                   -- reformat the SD card's FAT filesystem (destroys all data on it)
 LED RED / LED GREEN / LED BLUE -- fire a one-shot WS2812 status-LED pulse in that color
+SETTINGS DUMP                -- log the current in-memory UserSettings (FTP/weight/device IDs)
+SETTINGS RESET                -- factory-reset UserSettings and persist the defaults to FRAM
+SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n> -- set one UserSettings field and persist it
 ```
+
+UserSettings (rider FTP/weight, the four ANT+ device-number fields) is real, FRAM-backed
+persistence -- validated on the custom PCB across an actual hardware reset: `SETTINGS SET
+FTP 199` followed by a real reset still showed `FTP=199` on the next `SETTINGS DUMP`, not
+the factory default. `SETTINGS DUMP` only reports what's currently cached in RAM (it doesn't
+re-read FRAM), same convention as `BATT`/`CPS STATUS`.
 
 **Over USB CDC-ACM** (needs the board's own USB cable connected; use
 `pyserial`, not a bash `exec N<>/dev/ttyACM0` redirect -- the latter has

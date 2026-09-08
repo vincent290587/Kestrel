@@ -34,6 +34,8 @@
 #include "stc3100_demo.h"
 #include "smp_demo.h"
 #include "ble_demo.h"
+#include "settings_demo.h"
+#include "fram_test.h"
 #include "cmd_console.h"
 
 LOG_MODULE_REGISTER(cmd_console, LOG_LEVEL_INF);
@@ -90,12 +92,31 @@ static void handle_command(const char *cmd)
 		smp_demo_log_status();
 	} else if (strcmp(cmd, "CPS STATUS") == 0) {
 		ble_demo_log_status();
+	} else if (strcmp(cmd, "FRAM TEST") == 0) {
+		fram_test_start();
+	} else if (strcmp(cmd, "SETTINGS DUMP") == 0) {
+		settings_demo_dump();
+	} else if (strcmp(cmd, "SETTINGS RESET") == 0) {
+		settings_demo_reset();
+	} else if (strncmp(cmd, "SETTINGS SET FTP ", 17) == 0) {
+		settings_demo_set_ftp((uint16_t)atoi(&cmd[17]));
+	} else if (strncmp(cmd, "SETTINGS SET WEIGHT ", 20) == 0) {
+		settings_demo_set_weight((uint16_t)atoi(&cmd[20]));
+	} else if (strncmp(cmd, "SETTINGS SET HRM ", 17) == 0) {
+		settings_demo_set_hrm((uint16_t)atoi(&cmd[17]));
+	} else if (strncmp(cmd, "SETTINGS SET BSC ", 17) == 0) {
+		settings_demo_set_bsc((uint16_t)atoi(&cmd[17]));
+	} else if (strncmp(cmd, "SETTINGS SET FEC ", 17) == 0) {
+		settings_demo_set_fec((uint16_t)atoi(&cmd[17]));
+	} else if (strncmp(cmd, "SETTINGS SET GLA ", 17) == 0) {
+		settings_demo_set_gla((uint16_t)atoi(&cmd[17]));
 	} else {
 		LOG_WRN("cmd_console: unknown command \"%s\" (try \"SIM START\", \"SIM STOP\", "
 			"\"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
-			"\"DISK TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
-			"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", "
-			"\"BATT\", \"BLE STATUS\", or \"CPS STATUS\")",
+			"\"DISK TEST\", \"FRAM TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", "
+			"\"LED BLUE\", \"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", "
+			"\"DM CANCEL\", \"BATT\", \"BLE STATUS\", \"CPS STATUS\", \"SETTINGS DUMP\", "
+			"\"SETTINGS RESET\", or \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\")",
 			cmd);
 	}
 }
@@ -179,6 +200,7 @@ void cmd_console_start(void)
 
 	LOG_INF("cmd_console: ready on RTT down channel 0 and USB CDC-ACM -- \"SIM START\", "
 		"\"SIM STOP\", \"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
-		"\"DISK TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
-		"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", \"BATT\"");
+		"\"DISK TEST\", \"FRAM TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
+		"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", \"BATT\", "
+		"\"SETTINGS DUMP\", \"SETTINGS RESET\", \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\"");
 }
