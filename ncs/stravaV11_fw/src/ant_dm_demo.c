@@ -43,9 +43,18 @@
  * CANCEL") -- same "no menu/UI yet, so a plain-text command stands in"
  * approach gps_sim_demo.c's "SIM START"/"SIM STOP" already established.
  *
- * Not ported: stravaV10's UserSettings/FRAM persistence of the chosen
- * device number (see ant_device_manager.h's top-of-file note) -- a
- * pairing made here only lasts until the next reset.
+ * search_validate() also persists the chosen device number to FRAM via
+ * settings_demo_set_hrm()/_bsc()/_fec() (UserSettings::writeConfig()),
+ * matching stravaV10's own ant_device_manager_search_validate() (which
+ * writes into u_settings/FRAM right after ant_search_end()) -- this was
+ * the one piece explicitly deferred when this file was first ported (see
+ * ant_device_manager.h's own history), blocked on UserSettings not being
+ * wired into stravaV11_fw at all yet. It is now (see
+ * lib/source/model/UserSettings.{h,cpp}, adapters/fram_zephyr.c). Note
+ * this only persists a *live* "DM PICK" -- it doesn't change where
+ * hrm_demo.c/bsc_demo.c/fec_demo.c get their device number at boot
+ * (still each file's own hardcoded real constant, a deliberate, separate
+ * decision -- see ant_device_manager.h's comment on that).
  */
 
 #include <zephyr/kernel.h>
@@ -63,6 +72,7 @@
 
 #include "ant_device_manager.h"
 #include "ant_dm_demo.h"
+#include "settings_demo.h"
 
 LOG_MODULE_REGISTER(ant_dm_demo, LOG_LEVEL_INF);
 
@@ -130,6 +140,27 @@ static uint8_t profile_channel_for(enum ant_dm_sensor_type type)
 		return FEC_CHANNEL_NUMBER;
 	default:
 		return 0xff;
+	}
+}
+
+/* Mirrors stravaV10's ant_device_manager_search_validate() switch on
+ * m_search_type, just dispatching to settings_demo's setters instead of
+ * writing sUserParameters fields directly -- those already do the
+ * "set field, writeConfig()" pair (settings_demo.cpp). */
+static void persist_device_id(enum ant_dm_sensor_type type, uint16_t dev_id)
+{
+	switch (type) {
+	case ANT_DM_SENSOR_HRM:
+		settings_demo_set_hrm(dev_id);
+		break;
+	case ANT_DM_SENSOR_BSC:
+		settings_demo_set_bsc(dev_id);
+		break;
+	case ANT_DM_SENSOR_FEC:
+		settings_demo_set_fec(dev_id);
+		break;
+	default:
+		break;
 	}
 }
 
@@ -311,6 +342,8 @@ void ant_dm_demo_search_validate(int idx)
 
 	LOG_INF("DM %s paired with device %u (channel %u reprogrammed)",
 		sensor_type_name(m_search_type), dev_id, profile_channel);
+
+	persist_device_id(m_search_type, dev_id);
 
 	m_search_type = ANT_DM_SENSOR_NONE;
 }

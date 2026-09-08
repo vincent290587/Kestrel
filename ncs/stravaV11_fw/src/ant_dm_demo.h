@@ -28,7 +28,13 @@ void ant_dm_demo_search_list(void);
  * and reprograms the corresponding profile channel (HRM/BSC/FEC) to that
  * device number. That profile channel's own reconnect-on-close/pairing
  * logic (already in hrm_demo.c/bsc_demo.c/fec_demo.c) picks up the new
- * ID with no further wiring needed. */
+ * ID with no further wiring needed. Also persists the picked device
+ * number to FRAM via UserSettings (settings_demo_set_hrm()/_bsc()/_fec())
+ * -- a real, FRAM-backed pairing, not just a live channel reprogram --
+ * though it doesn't change what device number hrm_demo.c/bsc_demo.c/
+ * fec_demo.c themselves boot up with (each still hardcodes its own real
+ * constant; a future boot could read this persisted value instead, but
+ * that's separate follow-up work, not done by this call). */
 void ant_dm_demo_search_validate(int idx);
 
 /* Cancels an in-progress search: closes the background-scan channel,
