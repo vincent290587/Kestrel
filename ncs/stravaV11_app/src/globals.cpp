@@ -21,9 +21,12 @@
 UserSettings u_settings;
 
 /* GFX port Phase D: the global `vue` MenuObjects.cpp/Menuable.cpp/
- * VueDebug.cpp/VueGPS.cpp/VueFEC.cpp draw into -- see vue_global.h's own
- * comment for what VueBase is and why. */
-VueBase vue;
+ * VueDebug.cpp/VueGPS.cpp/VueFEC.cpp/VuePRC.cpp/VueCRS.cpp draw into --
+ * now the real, fully-assembled `Vue` class -- see vue_global.h's own
+ * comment. Not yet `.init()`'d or `.refresh()`'d from anywhere in this
+ * app's own smoke test main() -- see main.cpp's own Vue test block for
+ * what's exercised directly instead. */
+Vue vue;
 
 /* GFX port Phase D: the global Menuable instance menu_content.cpp builds
  * the menu tree against -- see menu_host.h's own comment for why this is

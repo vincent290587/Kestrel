@@ -8,6 +8,21 @@
  * cmd_source_poll_work_handler() and dispatch through the exact same
  * handle_command() -- the thing being shared is the actual logic, not
  * just the command list.
+ *
+ * GFX port Phase D (Vue assembly): "SIM START"/"SIM STOP" and their
+ * backing gps_sim_demo.c/gps_sim_route.h removed -- assembling the real
+ * `Vue` class (Vue.cpp) made the linker actually include the font-
+ * rendering/screen-drawing code it had previously eliminated as dead,
+ * overflowing this board's flash partition by ~25KB; gps_sim_route.h's
+ * embedded 1200-point GPX replay array (~33KB of `static const` data,
+ * baked straight into a header) was the single largest deliberately-
+ * removable thing in the image, more than covering the overflow on its
+ * own. This was always lab-only GPS test tooling (replaying a recorded
+ * ride when there's no real sky visibility, per gps_sim_demo.h's own
+ * comment) -- real GPS UART reception (uart_demo() in main.c) is
+ * unaffected, and map_screen_demo.c's own map-rendering logic already
+ * tolerates "no fix yet" as a normal state independent of where a fix
+ * would come from, so no other file needed functional changes.
  */
 
 #include <stdbool.h>
@@ -24,7 +39,6 @@
 #include <SEGGER_RTT.h>
 #endif
 
-#include "gps_sim_demo.h"
 #include "sd_stress_demo.h"
 #include "map_screen_demo.h"
 #include "disk_raw_test.h"
@@ -52,11 +66,7 @@ struct cmd_source {
 
 static void handle_command(const char *cmd)
 {
-	if (strcmp(cmd, "SIM START") == 0) {
-		gps_sim_route_start();
-	} else if (strcmp(cmd, "SIM STOP") == 0) {
-		gps_sim_route_stop();
-	} else if (strcmp(cmd, "STRESS START") == 0) {
+	if (strcmp(cmd, "STRESS START") == 0) {
 		sd_stress_demo_start();
 	} else if (strcmp(cmd, "STRESS STOP") == 0) {
 		sd_stress_demo_stop();
@@ -111,7 +121,7 @@ static void handle_command(const char *cmd)
 	} else if (strncmp(cmd, "SETTINGS SET GLA ", 17) == 0) {
 		settings_demo_set_gla((uint16_t)atoi(&cmd[17]));
 	} else {
-		LOG_WRN("cmd_console: unknown command \"%s\" (try \"SIM START\", \"SIM STOP\", "
+		LOG_WRN("cmd_console: unknown command \"%s\" (try "
 			"\"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
 			"\"DISK TEST\", \"FRAM TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", "
 			"\"LED BLUE\", \"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", "
@@ -198,8 +208,8 @@ void cmd_console_start(void)
 	k_work_schedule(&s_rtt_source.poll_work, K_NO_WAIT);
 #endif
 
-	LOG_INF("cmd_console: ready on RTT down channel 0 and USB CDC-ACM -- \"SIM START\", "
-		"\"SIM STOP\", \"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
+	LOG_INF("cmd_console: ready on RTT down channel 0 and USB CDC-ACM -- "
+		"\"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
 		"\"DISK TEST\", \"FRAM TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
 		"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", \"BATT\", "
 		"\"SETTINGS DUMP\", \"SETTINGS RESET\", \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\"");

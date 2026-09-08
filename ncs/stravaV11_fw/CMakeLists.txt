@@ -77,7 +77,6 @@ target_sources(app PRIVATE
   src/smp_demo.c
   src/gfx_demo.cpp
   src/gps_demo.cpp
-  src/gps_sim_demo.c
   src/sensor_screen_demo.c
   src/task_demo.c
   src/power_demo.c
@@ -101,6 +100,7 @@ target_sources(app PRIVATE
   lib/source/vue/VueFEC.cpp
   lib/source/vue/VuePRC.cpp
   lib/source/vue/VueCRS.cpp
+  lib/source/vue/Vue.cpp
   lib/libraries/komoot/komoot_nav.c
   lib/source/routes/Points.cpp
   lib/source/routes/Vecteur.cpp

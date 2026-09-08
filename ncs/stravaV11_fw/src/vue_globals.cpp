@@ -1,19 +1,25 @@
 /*
  * GFX port Phase D: definitions for the globals vue_global.h/menu_host.h
- * declare -- see those headers' own comments for why `vue` (VueBase) and
- * `menu` (Menuable) are separate globals from gfx_demo.cpp's own private
- * `gfx` object.
+ * declare -- see those headers' own comments for why `vue` (now the real,
+ * fully-assembled `Vue` class) and `menu` (a separate `Menuable` instance)
+ * are distinct globals from gfx_demo.cpp's own private `gfx` object.
  *
- * Deliberately NOT yet wired into main()'s boot sequence or pushed to the
- * real display -- gfx_demo.cpp's own gfx object already owns the one
+ * Deliberately still NOT wired into main()'s boot sequence or pushed to
+ * the real display -- gfx_demo.cpp's own gfx object still owns the one
  * physical LS027 buffer that's actively driven by sensor_screen_demo.c's
- * 1Hz redraw loop; making the menu actually appear on real glass needs
- * real display-arbitration design (pause that redraw while the menu is
- * open, push through the same display_write() pipeline) plus real GPIO
- * button wiring -- neither exists yet. This just defines the globals so
- * the menu system compiles and its real callback wiring (menu_content.cpp)
- * can be exercised once that integration work happens, likely as part of
- * porting Vue itself (see the GFX port plan in todo.md).
+ * 1Hz redraw loop, and `vue.init()` is never called here (see Vue.cpp's
+ * own top-of-file note plus main.cpp's Vue test block on stravaV11_app
+ * for the real reason: Menuable::initMenu() rebinds file-scope static
+ * page objects to whichever Menuable instance calls it, and `menu`
+ * already has -- calling it a second time on `vue` would corrupt that).
+ * Real display-arbitration (deciding which of gfx_demo.c's redraw loop vs.
+ * vue.refresh() actually owns the physical screen) and GPIO button wiring
+ * (driving vue.tasks() from real hardware input) are both still explicitly
+ * out of scope for this update, by direction -- this only defines the
+ * real Vue/Menuable globals so they exist and compile on real hardware,
+ * same "infrastructure before consumption" precedent as several earlier
+ * phases in this port (e.g. GPS_R/GPS_S wired into devicetree well before
+ * anything drove a real reset pulse).
  */
 
 #include "vue_global.h"
@@ -24,8 +30,9 @@
 #include "SufferScore.h"
 #include "g_structs.h"
 #include "SegmentManager.h"
+#include "Points.h"
 
-VueBase vue;
+Vue vue;
 MenuHost menu;
 
 /* GFX port Phase D: VuePRC.cpp's global -- the routes/ tier (Points,
@@ -55,3 +62,16 @@ PowerZone zPower;
 RRZone rrZones;
 SufferScore suffer_score;
 sPowerVector powerVector;
+
+/* GFX port Phase D (Vue assembly): normally defined in Model.cpp
+ * (stravaV11_app's own globals.cpp already carries the equivalent, per
+ * Phase 1) -- Points.h's static object-count bookkeeping. Never actually
+ * needed a definition here before now: Points.cpp was linked in as of the
+ * VuePRC increment, but nothing reachable from vue_globals.cpp's own
+ * globals ever actually *called* Point::Point()/~Point() until `Vue vue;`
+ * above started actually pulling VueCRS/VuePRC's real code paths in
+ * (previously dead-code-eliminated -- see the VueCRS increment's own
+ * todo.md note on that). Caught at link time (`undefined reference to
+ * Point::objectCount`), not by inspection. */
+int Point2D::objectCount2D = 0;
+int Point::objectCount = 0;

@@ -51,7 +51,24 @@
 #define ZEPHYR_GFX_HEIGHT 240
 #define ZEPHYR_GFX_BUFFER_SIZE ((ZEPHYR_GFX_WIDTH / 8) * ZEPHYR_GFX_HEIGHT)
 
-class ZephyrGFX : public Adafruit_GFX {
+/* GFX port Phase D (Vue assembly): Adafruit_GFX inheritance changed from
+ * plain `public` to `virtual public`. Every screen class this port has
+ * already ported (VueDebug/VueGPS/VueFEC/VuePRC/VueCRS) virtually inherits
+ * Adafruit_GFX, precisely so they all share one subobject when combined --
+ * the real `Vue` class combines all five of them *and* this class (to
+ * inherit its already-validated buffer-native drawPixel()/drawFastVLine()/
+ * drawFastHLine()/fillScreen(), rather than reimplementing stravaV10's own
+ * hand-rolled pixel/rotation code a second time). A plain, non-virtual
+ * Adafruit_GFX base here would create a *second*, separate Adafruit_GFX
+ * subobject alongside the one the five screen classes already share --
+ * the same class of ambiguity bug this port already found and fixed twice
+ * for VueGPS (see main.cpp's TestVueScreens comment) and afficheSegment()'s
+ * name collision, just for the base class itself this time. This change is
+ * a no-op for every existing standalone use of ZephyrGFX (map_render.cpp's
+ * `ZephyrGFX map_gfx`, gfx_demo.cpp's `ZephyrGFX gfx`, this file's own
+ * smoke tests) -- virtual inheritance behaves identically to non-virtual
+ * when the class is used on its own, only diamond composition differs. */
+class ZephyrGFX : virtual public Adafruit_GFX {
 public:
 	ZephyrGFX();
 

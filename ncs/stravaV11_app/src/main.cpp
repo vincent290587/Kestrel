@@ -1118,6 +1118,136 @@ int main(void)
 		       left_ok, (right_ok && left_ok) ? "MATCH" : "MISMATCH");
 	}
 
+	// --- GFX port Phase D: Vue itself -- the real, fully-assembled class
+	// (VueCRS+VueFEC+VuePRC+VueDebug+NotifiableDevice+Menuable+ZephyrGFX),
+	// now what `vue`'s global type actually is (see vue_global.h). Tests
+	// here exercise Vue's *own* methods (cadran()/cadranH()/cadranRR()/
+	// Histo()/HistoH()/refresh()/tasks()/clearDisplay()/invertDisplay()) --
+	// everything upstream of this point already validated each screen's
+	// own tasksXxx()/displayXxx() logic via the separate TestVueScreens
+	// placeholder harness; this is the first point in this port where
+	// real cadran() etc. rendering (not TestVueScreens' "just enough to
+	// prove reach" stand-ins) actually runs.
+	//
+	// Deliberately NOT calling vue.init() (or vue.initMenu() alone) here,
+	// and deliberately never sending eButtonsEventCenter to vue.tasks() --
+	// per the user's explicit direction not to wire buttons in this
+	// increment, and because of a second, real reentrancy hazard found
+	// while checking whether it would even be safe to: menu_content.cpp's
+	// Menuable::initMenu() builds its menu tree against *file-scope
+	// static* MenuPageItems/MenuPageSetting objects (`m_root_page`,
+	// `page_value`), constructed once and bound to a specific Menuable
+	// instance at static-init time (the existing `menu` global, from the
+	// earlier menu test) -- not per-call state the way `this->p_root_page`
+	// is. Calling `vue.initMenu()` would rebind those same static objects
+	// to `vue` instead, corrupting `menu`'s already-validated tree out
+	// from under it (the same class of single-owner assumption
+	// `Locator::init()`'s file-scope satellite-tracking arrays turned out
+	// to have, found earlier in this port). Left as a known, real
+	// constraint on `Menuable::initMenu()` (only ever call it on one
+	// Menuable instance per process), not chased further here since a
+	// second real menu instance isn't this port's actual end state anyway
+	// (there will only ever be one `vue` on real hardware). Because
+	// `vue.init()` never runs, `vue.tasks()` below is exercised with
+	// Left/Right only -- events that flow through `propagateEventsCRS()`/
+	// `Menuable::propagateEvent()` without ever touching `p_cur_page`
+	// (still null, since closeMenu()/initMenu() never ran on `vue`) --
+	// sending Center would dereference that null pointer.
+	{
+		printf("Vue: getLastRefreshed() before first refresh() = %u (expect 0)\n",
+		       vue.getLastRefreshed());
+
+		// Default mode is VUE_DEFAULT_MODE (eVueGlobalScreenCRS,
+		// parameters.h) -- refresh() should dispatch to tasksCRS() and
+		// draw for real via Vue's own cadran()/cadranH(), not a
+		// placeholder. att/segMngr/hrm_info/bsc_info are all real,
+		// already-validated globals from the VueCRS test block above
+		// (segMngr left empty by that block's own cleanup).
+		vue.fillScreen(1);
+		uint32_t before_crs_pixels = vue.countSetPixels();
+		vue.refresh();
+		uint32_t after_crs_pixels = vue.countSetPixels();
+		bool crs_refresh_ok =
+			(after_crs_pixels < before_crs_pixels) && (vue.getLastRefreshed() != 0);
+		printf("Vue: refresh() default mode (CRS) -> pixels %u -> %u, "
+		       "getLastRefreshed()=%u (expect nonzero) %s\n",
+		       before_crs_pixels, after_crs_pixels, vue.getLastRefreshed(),
+		       crs_refresh_ok ? "MATCH" : "MISMATCH");
+
+		// FEC mode: fec_info.el_time is 0 (left clean by the earlier
+		// VueFEC test block), so this hits VueFEC::tasksFEC()'s Init
+		// branch -- which calls the real vue.addNotif("FEC",
+		// "Connecting...", ...) (not a placeholder; VueFEC.cpp calls it
+		// on the global `vue`, which *is* `this` here) -- so this same
+		// refresh() call also exercises refresh()'s own notification-
+		// banner rendering path (getTextBounds() + the text.length()>2
+		// fix) in one integrated pass, not a separately-staged test.
+		vue.setCurrentMode(eVueGlobalScreenFEC);
+		vue.fillScreen(1);
+		uint32_t before_fec_pixels = vue.countSetPixels();
+		vue.refresh();
+		uint32_t after_fec_pixels = vue.countSetPixels();
+		printf("Vue: refresh() FEC mode (Init + notif banner) -> pixels %u -> %u %s\n",
+		       before_fec_pixels, after_fec_pixels,
+		       after_fec_pixels < before_fec_pixels ? "drew something"
+							     : "BUG: nothing drawn");
+
+		// PRC mode: p_parcours is always null in this port's VuePRC (see
+		// VuePRC.cpp's own note), so this exercises tasksPRC()'s "No PRC
+		// in memory" + always-drawn Avg/SOC cadran() path, same as the
+		// VuePRC test block above but now through the real assembled
+		// object and real refresh() dispatch instead of a direct call.
+		vue.setCurrentMode(eVueGlobalScreenPRC);
+		vue.fillScreen(1);
+		uint32_t before_prc_pixels = vue.countSetPixels();
+		vue.refresh();
+		uint32_t after_prc_pixels = vue.countSetPixels();
+		printf("Vue: refresh() PRC mode -> pixels %u -> %u %s\n", before_prc_pixels,
+		       after_prc_pixels,
+		       after_prc_pixels < before_prc_pixels ? "drew something"
+							     : "BUG: nothing drawn");
+
+		// DEBUG mode: displayDebug() -> locator.displayGPS2() + real
+		// cadranH()/cadran() calls.
+		vue.setCurrentMode(eVueGlobalScreenDEBUG);
+		vue.fillScreen(1);
+		uint32_t before_debug_pixels = vue.countSetPixels();
+		vue.refresh();
+		uint32_t after_debug_pixels = vue.countSetPixels();
+		printf("Vue: refresh() DEBUG mode -> pixels %u -> %u %s\n", before_debug_pixels,
+		       after_debug_pixels,
+		       after_debug_pixels < before_debug_pixels ? "drew something"
+								 : "BUG: nothing drawn");
+
+		// tasks(): back to CRS mode, Left/Right only (see this block's own
+		// top comment on why Center is never sent). Just confirms the
+		// real dispatch path (propagateEventsCRS() + Menuable::
+		// propagateEvent()) runs cleanly end-to-end with no crash --
+		// propagateEventsCRS()'s own *effect* (m_screen_page cycling) is
+		// already covered directly by the VueCRS test block above.
+		vue.setCurrentMode(eVueGlobalScreenCRS);
+		vue.tasks(eButtonsEventRight);
+		vue.tasks(eButtonsEventLeft);
+		printf("Vue: tasks(Right)/tasks(Left) (CRS mode, no menu) ran with no crash\n");
+
+		// clearDisplay()/invertDisplay(): clearDisplay() -> fillScreen(1)
+		// (all white, i.e. all bits set given this port's 1=white
+		// convention); invertDisplay() XORs the whole buffer, so
+		// immediately after clearDisplay() it should flip every bit to 0
+		// (all black) -- a fully deterministic check, not just "some
+		// pixels changed".
+		vue.clearDisplay();
+		uint32_t after_clear_pixels = vue.countSetPixels();
+		vue.invertDisplay();
+		uint32_t after_invert_pixels = vue.countSetPixels();
+		bool invert_ok = (after_clear_pixels == ZEPHYR_GFX_WIDTH * ZEPHYR_GFX_HEIGHT) &&
+				 (after_invert_pixels == 0);
+		printf("Vue: clearDisplay() -> %u pixels set (expect %u), invertDisplay() -> %u "
+		       "pixels set (expect 0) %s\n",
+		       after_clear_pixels, ZEPHYR_GFX_WIDTH * ZEPHYR_GFX_HEIGHT, after_invert_pixels,
+		       invert_ok ? "MATCH" : "MISMATCH");
+	}
+
 	// --- notifications.c: port of stravaV10's WS2812 status-LED animation
 	// state machine, backed here by drv_ws2812_stub.c (no real LED on
 	// native_sim, just tracks the last color set). Drives a one-shot
