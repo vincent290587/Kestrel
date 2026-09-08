@@ -78,6 +78,24 @@ static void gfx_print_centered(char *str, int16_t y, uint8_t size)
 	gfx.setCursor(MAX(2, (gfx.width() - (int)w) / 2 - x1), y);
 	gfx.print(str);
 }
+
+/* GFX port Phase C: the user's stale-data-indicator requirement -- draws
+ * an X across a field's row when its backing data isn't fresh (see
+ * model_glue.h), instead of a "-- (search)" text placeholder. y_center is
+ * the row's vertical midpoint; half_h keeps the cross comfortably inside
+ * the ~40-50px band each row on this screen already occupies (see the
+ * fixed y positions in gfx_demo_show_sensors() below) without overlapping
+ * the row above/below. */
+static void gfx_draw_stale_cross(int16_t y_center, int16_t half_h)
+{
+	int16_t x0 = 4;
+	int16_t x1 = gfx.width() - 4;
+	int16_t y0 = y_center - half_h;
+	int16_t y1 = y_center + half_h;
+
+	gfx.drawLine(x0, y0, x1, y1, 0);
+	gfx.drawLine(x0, y1, x1, y0, 0);
+}
 #endif
 
 void gfx_demo(void)
@@ -127,51 +145,76 @@ void gfx_demo_show_sensors(uint8_t bpm, uint16_t rr_ms, bool hrm_paired, uint32_
 	static char rr_line[24];
 	static char spd_line[24];
 	static char cad_line[24];
+	static char alt_line[24];
+	static char batt_line[24];
+
+	/* Each row: print the field label (value included only when fresh),
+	 * then -- when stale -- strike an X across the row instead of the
+	 * old "-- (search)"/"-- (no fix)" text placeholders (GFX port Phase C,
+	 * the user's stale-data-indicator requirement). Whole numbers only
+	 * for ALT/BATT, same as every other value on this screen -- sidesteps
+	 * relying on snprintf's float formatting under picolibc, not
+	 * confirmed supported in this build (see gps_demo.cpp). */
 
 	if (hrm_paired) {
 		snprintf(hr_line, sizeof(hr_line), "HR %u bpm", bpm);
+	} else {
+		snprintf(hr_line, sizeof(hr_line), "HR");
+	}
+	gfx_print_centered(hr_line, 100, 3);
+	if (!hrm_paired) {
+		gfx_draw_stale_cross(100, 12);
+	}
+
+	if (hrm_paired) {
 		snprintf(rr_line, sizeof(rr_line), "RR %u ms", rr_ms);
 	} else {
-		snprintf(hr_line, sizeof(hr_line), "HR -- (search)");
-		snprintf(rr_line, sizeof(rr_line), "RR --");
+		snprintf(rr_line, sizeof(rr_line), "RR");
+	}
+	gfx_print_centered(rr_line, 150, 2);
+	if (!hrm_paired) {
+		gfx_draw_stale_cross(150, 12);
 	}
 
 	if (bsc_paired) {
 		snprintf(spd_line, sizeof(spd_line), "%u km/h", speed_kph);
-		snprintf(cad_line, sizeof(cad_line), "CAD %u rpm", cadence_rpm);
 	} else {
-		snprintf(spd_line, sizeof(spd_line), "SPD -- (search)");
-		snprintf(cad_line, sizeof(cad_line), "CAD -- (search)");
+		snprintf(spd_line, sizeof(spd_line), "SPD");
+	}
+	gfx_print_centered(spd_line, 230, 3);
+	if (!bsc_paired) {
+		gfx_draw_stale_cross(230, 12);
 	}
 
-	static char alt_line[24];
+	if (bsc_paired) {
+		snprintf(cad_line, sizeof(cad_line), "CAD %u rpm", cadence_rpm);
+	} else {
+		snprintf(cad_line, sizeof(cad_line), "CAD");
+	}
+	gfx_print_centered(cad_line, 280, 2);
+	if (!bsc_paired) {
+		gfx_draw_stale_cross(280, 12);
+	}
 
-	/* Whole metres only, same as every other value on this screen (HR,
-	 * SPD, CAD are all integers too) -- also sidesteps relying on
-	 * snprintf's float formatting under picolibc, which this project has
-	 * deliberately avoided elsewhere (see gps_demo.cpp) since it isn't
-	 * confirmed supported in this build. */
 	if (has_alt) {
 		snprintf(alt_line, sizeof(alt_line), "ALT %d m", (int)alt_m);
 	} else {
-		snprintf(alt_line, sizeof(alt_line), "ALT -- (no fix)");
+		snprintf(alt_line, sizeof(alt_line), "ALT");
+	}
+	gfx_print_centered(alt_line, 330, 2);
+	if (!has_alt) {
+		gfx_draw_stale_cross(330, 12);
 	}
 
-	static char batt_line[24];
-
-	/* Whole percent only, same reasoning as alt_line above. */
 	if (has_batt) {
 		snprintf(batt_line, sizeof(batt_line), "BATT %d%%", (int)batt_percent);
 	} else {
-		snprintf(batt_line, sizeof(batt_line), "BATT -- (n/a)");
+		snprintf(batt_line, sizeof(batt_line), "BATT");
 	}
-
-	gfx_print_centered(hr_line, 100, 3);
-	gfx_print_centered(rr_line, 150, 2);
-	gfx_print_centered(spd_line, 230, 3);
-	gfx_print_centered(cad_line, 280, 2);
-	gfx_print_centered(alt_line, 330, 2);
 	gfx_print_centered(batt_line, 370, 2);
+	if (!has_batt) {
+		gfx_draw_stale_cross(370, 12);
+	}
 
 	gfx_push();
 #else

@@ -89,6 +89,7 @@ target_sources(app PRIVATE
   src/sd_stress_demo.c
   src/notifications_demo.c
   src/settings_demo.cpp
+  src/model_glue.c
   lib/bt_cp_client.c
   lib/ant_fec.c
   lib/ant_device_manager.c

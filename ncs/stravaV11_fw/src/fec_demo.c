@@ -75,6 +75,7 @@ static uint8_t m_prev_elapsed_time_raw;
 static bool m_time_init;
 
 static uint16_t m_power_w;
+static int64_t m_power_last_update_ms; /* 0 = never (see fec_demo_get_power_age_ms()) */
 
 static uint8_t m_tx_buf[8]; /* page number + 7-byte payload, per ANT data message size */
 static bool m_tx_pending;
@@ -119,6 +120,7 @@ static void handle_page25(const uint8_t *page_payload)
 
 	ant_fec_page25_decode(page_payload, &page25);
 	m_power_w = page25.inst_power;
+	m_power_last_update_ms = k_uptime_get();
 
 	LOG_INF("FEC power=%u W cadence=%u status=%u", page25.inst_power, page25.inst_cad,
 		page25.status);
@@ -297,4 +299,13 @@ uint16_t fec_demo_get_elapsed_time_s(void)
 bool fec_demo_is_paired(void)
 {
 	return m_paired != 0;
+}
+
+uint32_t fec_demo_get_power_age_ms(void)
+{
+	if (m_power_last_update_ms == 0) {
+		return UINT32_MAX;
+	}
+
+	return (uint32_t)(k_uptime_get() - m_power_last_update_ms);
 }

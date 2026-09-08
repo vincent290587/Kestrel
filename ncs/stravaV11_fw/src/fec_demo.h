@@ -23,6 +23,11 @@ uint16_t fec_demo_get_power_w(void);
 uint16_t fec_demo_get_elapsed_time_s(void);
 bool fec_demo_is_paired(void);
 
+/* Milliseconds since the last real page-25 (power) decode, or UINT32_MAX
+ * if none ever arrived. Same age-vs-is_paired() distinction as
+ * hrm_demo_get_age_ms() -- see there. */
+uint32_t fec_demo_get_power_age_ms(void);
+
 #ifdef __cplusplus
 }
 #endif

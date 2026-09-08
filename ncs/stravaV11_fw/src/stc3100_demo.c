@@ -40,6 +40,7 @@ LOG_MODULE_REGISTER(stc3100_demo, LOG_LEVEL_INF);
 static bool m_have_reading;
 static struct stc3100_reading m_reading;
 static float m_percent;
+static int64_t m_last_update_ms; /* 0 = never (see stc3100_demo_get_age_ms()) */
 
 static void stc3100_poll_work_handler(struct k_work *work);
 static K_WORK_DELAYABLE_DEFINE(stc3100_poll_work, stc3100_poll_work_handler);
@@ -59,6 +60,7 @@ static void stc3100_poll_work_handler(struct k_work *work)
 		stc3100_decode(&raw, STC3100_R_SENS_MOHM, &m_reading);
 		m_percent = stc3100_percent(m_reading.voltage_v, m_reading.current_ma);
 		m_have_reading = true;
+		m_last_update_ms = k_uptime_get();
 	}
 	/* No STC3100 on this bus (e.g. the DK): i2c_write_read() fails
 	 * cleanly every cycle, getters keep returning false -- same
@@ -118,6 +120,15 @@ bool stc3100_demo_get_percent(float *percent)
 	}
 	*percent = m_percent;
 	return true;
+}
+
+uint32_t stc3100_demo_get_age_ms(void)
+{
+	if (m_last_update_ms == 0) {
+		return UINT32_MAX;
+	}
+
+	return (uint32_t)(k_uptime_get() - m_last_update_ms);
 }
 
 void stc3100_demo_log_reading(void)

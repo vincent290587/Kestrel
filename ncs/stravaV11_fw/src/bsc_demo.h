@@ -16,4 +16,10 @@ uint32_t bsc_demo_get_speed(void);
 uint32_t bsc_demo_get_cadence(void);
 bool bsc_demo_is_paired(void);
 
+/* Milliseconds since the last real ANT+ combined-page update (speed and
+ * cadence always update together, from the same page -- see
+ * ant_bsc_evt_handler()), or UINT32_MAX if none ever arrived. Same
+ * age-vs-is_paired() distinction as hrm_demo_get_age_ms() -- see there. */
+uint32_t bsc_demo_get_age_ms(void);
+
 #endif /* BSC_DEMO_H_ */

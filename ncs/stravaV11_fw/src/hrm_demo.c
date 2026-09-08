@@ -61,6 +61,11 @@ static uint8_t m_paired;
 static uint8_t m_bpm;
 static uint16_t m_rr_ms;
 
+/* 0 = never updated (k_uptime_get() starts at/near 0 too, but the
+ * UINT32_MAX sentinel hrm_demo_get_age_ms() returns for this case makes
+ * that ambiguity moot -- see there). */
+static int64_t m_last_update_ms;
+
 static void hrm_connect(void)
 {
 	int err = ant_hrm_disp_open(&m_hrm);
@@ -79,6 +84,7 @@ static void ant_hrm_evt_handler(ant_hrm_profile_t *p_profile, ant_hrm_evt_t even
 	uint32_t beat_count = p_profile->page_0.beat_count;
 
 	m_bpm = p_profile->page_0.computed_heart_rate;
+	m_last_update_ms = k_uptime_get();
 
 	switch (event) {
 	case ANT_HRM_PAGE_0_UPDATED:
@@ -190,4 +196,13 @@ uint16_t hrm_demo_get_rr_ms(void)
 bool hrm_demo_is_paired(void)
 {
 	return m_paired != 0;
+}
+
+uint32_t hrm_demo_get_age_ms(void)
+{
+	if (m_last_update_ms == 0) {
+		return UINT32_MAX;
+	}
+
+	return (uint32_t)(k_uptime_get() - m_last_update_ms);
 }

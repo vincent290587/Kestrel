@@ -84,6 +84,7 @@ static bsc_calc_data_t m_cadence_calc_data;
  * isn't wired into stravaV11_fw yet, so this demo just logs. */
 static uint32_t m_speed;
 static uint32_t m_cadence;
+static int64_t m_last_update_ms; /* 0 = never (see bsc_demo_get_age_ms()) */
 
 static uint8_t m_reconn_counts;
 static uint8_t m_paired;
@@ -193,6 +194,7 @@ static void ant_bsc_evt_handler(ant_bsc_profile_t *p_profile, ant_bsc_evt_t even
 				   p_profile->BSC_PROFILE_speed_event_time);
 	m_cadence = calculate_cadence(p_profile->BSC_PROFILE_cadence_rev_count,
 				       p_profile->BSC_PROFILE_cadence_event_time);
+	m_last_update_ms = k_uptime_get();
 
 	LOG_INF("BSC speed=%u cadence=%u", m_speed, m_cadence);
 }
@@ -285,4 +287,13 @@ uint32_t bsc_demo_get_cadence(void)
 bool bsc_demo_is_paired(void)
 {
 	return m_paired != 0;
+}
+
+uint32_t bsc_demo_get_age_ms(void)
+{
+	if (m_last_update_ms == 0) {
+		return UINT32_MAX;
+	}
+
+	return (uint32_t)(k_uptime_get() - m_last_update_ms);
 }

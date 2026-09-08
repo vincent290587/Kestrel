@@ -24,6 +24,14 @@ bool stc3100_demo_get_current_ma(float *current_ma);
 bool stc3100_demo_get_charge_mah(float *charge_mah);
 bool stc3100_demo_get_percent(float *percent);
 
+/* Milliseconds since the last successful I2C read, or UINT32_MAX if none
+ * ever succeeded. This chip is a fixed, onboard, always-on-the-bus part
+ * (not a wireless sensor that can go out of range), so real staleness is
+ * a much rarer scenario than for hrm_demo/bsc_demo/fec_demo -- added for
+ * consistency with those, not because a disconnect scenario is expected
+ * here. */
+uint32_t stc3100_demo_get_age_ms(void);
+
 /* Logs the current reading (or "no reading yet") -- on-demand
  * introspection via cmd_console.c's "BATT" command, same purpose as
  * "DM LIST" for the device manager. */
