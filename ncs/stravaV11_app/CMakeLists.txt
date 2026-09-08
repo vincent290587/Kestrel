@@ -84,6 +84,7 @@ target_sources(app PRIVATE
   ${LIB_ROOT}/source/vue/VueGPS.cpp
   ${LIB_ROOT}/source/vue/VueFEC.cpp
   ${LIB_ROOT}/source/vue/VuePRC.cpp
+  ${LIB_ROOT}/source/vue/VueCRS.cpp
   ${ADAPTERS_ROOT}/debug_screen_data_stub.cpp
   src/menu_content.cpp
   ${ADAPTERS_ROOT}/fram_stub.c

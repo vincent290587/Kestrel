@@ -34,8 +34,10 @@
 #include "VueGPS.h"
 #include "VueFEC.h"
 #include "VuePRC.h"
+#include "VueCRS.h"
 #include "Parcours.h"
 #include "att_global.h"
+#include "SegmentManager.h"
 #include "Org_01.h"
 #include "map_tile.h"
 #include "test_tile_data.h"
@@ -51,6 +53,7 @@
 #endif
 
 extern UserSettings u_settings;
+extern SegmentManager segMngr;
 
 /* Host side of the rv32_emu research spike (see rv32_emu.h): the guest's
  * only way to affect anything outside its own sandboxed memory arena is
@@ -221,8 +224,19 @@ static bool test_zephyrgfx_fast_paths(uint8_t rotation)
  * compile time. Declaring the direct base `virtual` too merges it back
  * into VuePRC's own virtual VueGPS subobject, restoring a single shared
  * instance -- the same fix stravaV10's real `Vue` class would need if it
- * ever combined VuePRC with a directly-named VueGPS base the same way. */
-class TestVueScreens : public VueDebug, virtual public VueGPS, public VueFEC, public VuePRC {
+ * ever combined VuePRC with a directly-named VueGPS base the same way.
+ *
+ * VueCRS also virtually inherits VueGPS (for its own eVueCRSScreenInit
+ * fallback to displayGPS()), so it slots into the already-virtual VueGPS
+ * base above with no further change needed there. It does introduce a
+ * *different* diamond wrinkle: VueCRS declares its own protected
+ * `afficheSegment(uint8_t, Segment*)` -- same name, same signature as
+ * VuePRC's own, but the two are otherwise unrelated (no shared virtual
+ * base declares it once), so `this->afficheSegment(...)` from within this
+ * class is genuinely ambiguous -- the compiler can't tell which one is
+ * meant. The testAfficheSegment()/testCRSAfficheSegment() forwarders
+ * below resolve it with explicit `VuePRC::`/`VueCRS::` qualification. */
+class TestVueScreens : public VueDebug, virtual public VueGPS, public VueFEC, public VuePRC, public VueCRS {
 public:
 	// Adafruit_GFX is a *virtual* base shared by all three, so as the
 	// most-derived class, TestVueScreens (not any one of them) is
@@ -260,9 +274,28 @@ public:
 		vue.drawPixel(x, y, color);
 	}
 
+	// Real bug found porting VueCRS: none of these five placeholders used
+	// to reset `vue`'s cursor before printing, relying entirely on
+	// println()'s own y-advance from whatever position the *previous*
+	// call left it at. That's fine in isolation, but across this whole,
+	// steadily-growing smoke test the cursor only ever moves down, never
+	// wraps back -- by the time VueCRS::afficheScreen2() (which draws
+	// exclusively through cadran()/cadranRR(), no other drawing calls of
+	// its own to coincidentally reset anything) ran, `vue`'s cursor had
+	// accumulated far enough below the buffer that every glyph landed
+	// off-screen and got silently clipped by ZephyrGFX::drawPixel()'s own
+	// bounds check -- a real "pixels 96000 -> 96000, nothing drawn"
+	// result that looked exactly like a broken VueCRS::afficheScreen2(),
+	// even though that function itself was already correct. A real
+	// `Vue::cadran()` computes an explicit x/y from p_lig/nb_lig/p_col
+	// every call rather than accumulating; these placeholders now do the
+	// simplest version of the same thing -- reset to a fixed top-left
+	// position before printing -- which is enough to keep them from
+	// drifting off-buffer without pretending to be real layout.
 	void cadranH(uint8_t p_lig, uint8_t nb_lig, const char *champ, String affi,
 		     const char *p_unite) override
 	{
+		vue.setCursor(0, 0);
 		vue.print(champ);
 		vue.print(": ");
 		vue.println(affi);
@@ -271,6 +304,7 @@ public:
 	void cadran(uint8_t p_lig, uint8_t nb_lig, uint8_t p_col, const char *champ, String affi,
 		    const char *p_unite) override
 	{
+		vue.setCursor(0, 0);
 		vue.print(champ);
 		vue.print("=");
 		vue.println(affi);
@@ -279,6 +313,7 @@ public:
 	void cadranRR(uint8_t p_lig, uint8_t nb_lig, uint8_t p_col, const char *champ,
 		      RRZone &zone) override
 	{
+		vue.setCursor(0, 0);
 		vue.print(champ);
 		vue.println(" (RR zone placeholder)");
 	}
@@ -286,11 +321,13 @@ public:
 	void Histo(uint8_t p_lig, uint8_t nb_lig, uint8_t p_col,
 		   sVueHistoConfiguration &h_config_) override
 	{
+		vue.setCursor(0, 0);
 		vue.println("(Histo placeholder)");
 	}
 
 	void HistoH(uint8_t p_lig, uint8_t nb_lig, sVueHistoConfiguration &h_config_) override
 	{
+		vue.setCursor(0, 0);
 		vue.println("(HistoH placeholder)");
 	}
 
@@ -315,9 +352,12 @@ public:
 		this->afficheParcours(ligne, p_liste);
 	}
 
+	// VuePRC:: qualification required once VueCRS (below) joins this
+	// hierarchy -- see the class's own top comment on why afficheSegment()
+	// alone is ambiguous without it.
 	void testAfficheSegment(uint8_t ligne, Segment *p_seg)
 	{
-		this->afficheSegment(ligne, p_seg);
+		this->VuePRC::afficheSegment(ligne, p_seg);
 	}
 
 	// Zoom's public API (increaseZoom()/decreaseZoom()/getZoomLevel()/...)
@@ -328,6 +368,47 @@ public:
 	uint8_t testGetZoomLevel()
 	{
 		return this->getZoomLevel();
+	}
+
+	// VueCRS's own protected internals -- same thin-forwarder rationale as
+	// every class above. afficheSegment() needs VueCRS:: qualification for
+	// the same reason testAfficheSegment() above needs VuePRC::.
+	void testCRSAfficheSegment(uint8_t ligne, Segment *p_seg)
+	{
+		this->VueCRS::afficheSegment(ligne, p_seg);
+	}
+
+	void testCRSAfficheScreen1()
+	{
+		this->afficheScreen1();
+	}
+
+	void testCRSAfficheScreen2()
+	{
+		this->afficheScreen2();
+	}
+
+	void testCRSAfficheSensors()
+	{
+		this->afficheSensors();
+	}
+
+	void testCRSPartner(uint8_t ligne, Segment *p_seg)
+	{
+		this->partner(ligne, p_seg);
+	}
+
+	// m_crs_screen_mode is `protected`, driven normally by tasksCRS()'s
+	// own locator-freshness check -- which the global `locator` (never
+	// given a real GPS fix in this smoke test) can never satisfy, so
+	// tasksCRS() alone can never reach afficheScreen1()'s DataFull/DataSS/
+	// DataDS branches. This forwarder lets the test below force a starting
+	// mode directly, the same role fec_info.el_time's direct assignment
+	// played for the VueFEC test above (there it's a real global; here
+	// it's a protected member, hence a forwarder instead).
+	void testCRSSetMode(eVueCRSScreenModes mode)
+	{
+		m_crs_screen_mode = mode;
 	}
 };
 
@@ -892,6 +973,149 @@ int main(void)
 		       "%s\n",
 		       (int)prc_mode, (int)eVuePRCScreenDataFull, before_prc_pixels, after_prc_pixels,
 		       prc_ok ? "MATCH" : "MISMATCH");
+	}
+
+	// --- GFX port Phase D: VueCRS, same TestVueScreens instance. Real
+	// dependencies (locator.getLastUpdateAge(), att, segMngr, hrm_info/
+	// bsc_info, rrZones, suffer_score, m_komoot_nav, the STC3100 reading)
+	// all resolve. afficheSensors() is a deliberate trim (FXOS not
+	// ported -- see VueCRS.cpp's own top-of-file note), so it's tested as
+	// the documented placeholder it now is, not real sensor output. ---
+	{
+		// tasksCRS() itself, via its real entry point: the global
+		// `locator` never receives a GPS fix in this smoke test, so
+		// getLastUpdateAge() is always stale -- tasksCRS() can only ever
+		// genuinely reach eVueCRSScreenInit this way, exercising the
+		// `this->displayGPS()` substitution (see VueCRS.cpp's own note on
+		// why it's `this->`, not `vue.`, in this port).
+		vue.fillScreen(1);
+		uint32_t before_init_pixels = vue.countSetPixels();
+		eVueCRSScreenModes crs_mode = vue_screens.tasksCRS();
+		uint32_t after_init_pixels = vue.countSetPixels();
+		bool crs_init_ok =
+			(crs_mode == eVueCRSScreenInit) && (after_init_pixels < before_init_pixels);
+		printf("VueCRS: tasksCRS() (stale locator) -> mode=%d (expect %d/Init), pixels %u -> "
+		       "%u %s\n",
+		       (int)crs_mode, (int)eVueCRSScreenInit, before_init_pixels, after_init_pixels,
+		       crs_init_ok ? "MATCH" : "MISMATCH");
+
+		// afficheScreen1()'s DataFull/DataSS/DataDS branches, forced via
+		// testCRSSetMode() since tasksCRS() alone can't reach them here
+		// (see that forwarder's own comment). Real 4-point Segments, same
+		// tight real-scale spacing established validating VuePRC, each
+		// added to the real global `segMngr` (SegmentManager::addSegment()
+		// stores a pointer to what's passed in, so these must outlive
+		// this whole block -- they do, same scope).
+		Segment test_crs_seg1("crs_test_segment_1");
+		test_crs_seg1.init();
+		test_crs_seg1.ajouterPointFin(48.85740f, 2.35380f, 35.f, 0.f);
+		test_crs_seg1.ajouterPointFin(48.85745f, 2.35390f, 36.f, 10.f);
+		test_crs_seg1.ajouterPointFin(48.85750f, 2.35400f, 38.f, 20.f);
+		test_crs_seg1.ajouterPointFin(48.85755f, 2.35410f, 40.f, 30.f);
+
+		Segment test_crs_seg2("crs_test_segment_2");
+		test_crs_seg2.init();
+		test_crs_seg2.ajouterPointFin(48.85760f, 2.35420f, 41.f, 0.f);
+		test_crs_seg2.ajouterPointFin(48.85765f, 2.35430f, 42.f, 10.f);
+		test_crs_seg2.ajouterPointFin(48.85770f, 2.35440f, 43.f, 20.f);
+		test_crs_seg2.ajouterPointFin(48.85775f, 2.35450f, 44.f, 30.f);
+
+		att.loc.lat = 48.85748f;
+		att.loc.lon = 2.35395f;
+
+		// 0 segments -> DataFull
+		vue.fillScreen(1);
+		uint32_t before_full_pixels = vue.countSetPixels();
+		vue_screens.testCRSSetMode(eVueCRSScreenDataFull);
+		vue_screens.testCRSAfficheScreen1();
+		uint32_t after_full_pixels = vue.countSetPixels();
+		printf("VueCRS: afficheScreen1() 0 segs -> DataFull, pixels %u -> %u %s\n",
+		       before_full_pixels, after_full_pixels,
+		       after_full_pixels < before_full_pixels ? "drew something"
+								: "BUG: nothing drawn");
+
+		// 1 segment -> DataSS (exercises afficheSegment() + cadranH()'s
+		// "Next" fallback together, via the real integration path, not a
+		// direct forwarder call)
+		segMngr.addSegment(test_crs_seg1);
+		vue.fillScreen(1);
+		uint32_t before_ss_pixels = vue.countSetPixels();
+		vue_screens.testCRSSetMode(eVueCRSScreenDataFull); // recomputed from getNbSegs() inside
+		vue_screens.testCRSAfficheScreen1();
+		uint32_t after_ss_pixels = vue.countSetPixels();
+		printf("VueCRS: afficheScreen1() 1 seg -> DataSS, pixels %u -> %u %s\n",
+		       before_ss_pixels, after_ss_pixels,
+		       after_ss_pixels < before_ss_pixels ? "drew something" : "BUG: nothing drawn");
+
+		// 2 segments, both SEG_OFF -> DataDS's "all segments OFF" branch
+		// (exercises afficheSegment() called twice + cadranH())
+		segMngr.addSegment(test_crs_seg2);
+		vue.fillScreen(1);
+		uint32_t before_ds_pixels = vue.countSetPixels();
+		vue_screens.testCRSSetMode(eVueCRSScreenDataFull);
+		vue_screens.testCRSAfficheScreen1();
+		uint32_t after_ds_pixels = vue.countSetPixels();
+		printf("VueCRS: afficheScreen1() 2 segs -> DataDS, pixels %u -> %u %s\n",
+		       before_ds_pixels, after_ds_pixels,
+		       after_ds_pixels < before_ds_pixels ? "drew something" : "BUG: nothing drawn");
+
+		segMngr.clearSegs(); // leave global state clean, matching precedent
+
+		// afficheSegment()/partner() directly, same rigor as VuePRC's own
+		// direct forwarder tests, isolating each from the afficheScreen1()
+		// integration above.
+		vue.fillScreen(1);
+		uint32_t before_crsseg_pixels = vue.countSetPixels();
+		vue_screens.testCRSAfficheSegment(5, &test_crs_seg1);
+		uint32_t after_crsseg_pixels = vue.countSetPixels();
+		printf("VueCRS: afficheSegment() pixels %u -> %u %s\n", before_crsseg_pixels,
+		       after_crsseg_pixels,
+		       after_crsseg_pixels < before_crsseg_pixels ? "drew something"
+								    : "BUG: nothing drawn");
+
+		vue.fillScreen(1);
+		uint32_t before_partner_pixels = vue.countSetPixels();
+		vue_screens.testCRSPartner(5, &test_crs_seg1);
+		uint32_t after_partner_pixels = vue.countSetPixels();
+		printf("VueCRS: partner() pixels %u -> %u %s\n", before_partner_pixels,
+		       after_partner_pixels,
+		       after_partner_pixels < before_partner_pixels ? "drew something"
+								      : "BUG: nothing drawn");
+
+		// afficheScreen2() -- komoot icon lookup + cadranRR(), real
+		// `m_komoot_nav`/`rrZones` globals (both zero-initialized/empty,
+		// same "no ride data yet" honesty as everything else this port
+		// hasn't wired a real data source into yet).
+		vue.fillScreen(1);
+		uint32_t before_screen2_pixels = vue.countSetPixels();
+		vue_screens.testCRSAfficheScreen2();
+		uint32_t after_screen2_pixels = vue.countSetPixels();
+		printf("VueCRS: afficheScreen2() pixels %u -> %u %s\n", before_screen2_pixels,
+		       after_screen2_pixels,
+		       after_screen2_pixels < before_screen2_pixels ? "drew something"
+								      : "BUG: nothing drawn");
+
+		// afficheSensors() -- the documented FXOS-not-ported placeholder.
+		vue.fillScreen(1);
+		uint32_t before_sensors_pixels = vue.countSetPixels();
+		vue_screens.testCRSAfficheSensors();
+		uint32_t after_sensors_pixels = vue.countSetPixels();
+		printf("VueCRS: afficheSensors() placeholder pixels %u -> %u %s\n",
+		       before_sensors_pixels, after_sensors_pixels,
+		       after_sensors_pixels < before_sensors_pixels ? "drew something"
+								      : "BUG: nothing drawn");
+
+		// propagateEventsCRS(): cycles m_screen_page Page1->Page2->Page3->
+		// Page1 (Right) and the reverse (Left) -- no external getter for
+		// m_screen_page exists (nothing needs one outside this test), so
+		// this just confirms the real entry point runs cleanly under both
+		// directions without crashing; page-selection *effect* is already
+		// covered by the direct afficheScreen1()/2()/Sensors() calls
+		// above.
+		bool right_ok = vue_screens.propagateEventsCRS(eButtonsEventRight);
+		bool left_ok = vue_screens.propagateEventsCRS(eButtonsEventLeft);
+		printf("VueCRS: propagateEventsCRS() Right=%d Left=%d (expect 1/1) %s\n", right_ok,
+		       left_ok, (right_ok && left_ok) ? "MATCH" : "MISMATCH");
 	}
 
 	// --- notifications.c: port of stravaV10's WS2812 status-LED animation

@@ -61,6 +61,7 @@ target_include_directories(app PRIVATE
   lib/source/display
   lib/source/parsers
   lib/source/routes
+  lib/libraries/komoot
   adapters
 )
 
@@ -99,6 +100,8 @@ target_sources(app PRIVATE
   lib/source/vue/VueGPS.cpp
   lib/source/vue/VueFEC.cpp
   lib/source/vue/VuePRC.cpp
+  lib/source/vue/VueCRS.cpp
+  lib/libraries/komoot/komoot_nav.c
   lib/source/routes/Points.cpp
   lib/source/routes/Vecteur.cpp
   lib/source/routes/ListePoints.cpp
