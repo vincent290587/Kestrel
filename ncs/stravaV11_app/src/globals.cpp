@@ -8,6 +8,9 @@
 #include "Points.h"
 #include "ZephyrGFX.h"
 #include "menu_host.h"
+#include "att_global.h"
+#include "Locator.h"
+#include "Segment.h"
 
 UserSettings u_settings;
 
@@ -20,6 +23,19 @@ ZephyrGFX vue;
  * the menu tree against -- see menu_host.h's own comment for why this is
  * separate from `vue`. */
 MenuHost menu;
+
+/* GFX port Phase D: see att_global.h's own comment -- stays zero-
+ * initialized until Attitude (not ported) exists to populate it. */
+SAtt att;
+
+/* GFX port Phase D: VueDebug.cpp's global `locator` (via
+ * Locator::displayGPS2()) and `mes_segments` (real ListeSegments, just
+ * empty until real route/segment loading is wired into this app --
+ * neither app does that yet). Distinct from main.cpp's own local
+ * `Locator locator;` in its GPS smoke test, which stays local since
+ * nothing else needs to share it. */
+Locator locator;
+ListeSegments mes_segments;
 
 // Also normally defined in Model.cpp, even though they belong to Points.h's
 // object-count bookkeeping.

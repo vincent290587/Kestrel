@@ -30,6 +30,7 @@
 #include "menu_host.h"
 #include "vue_global.h"
 #include "button.h"
+#include "VueDebug.h"
 #include "Org_01.h"
 #include "map_tile.h"
 #include "test_tile_data.h"
@@ -192,6 +193,52 @@ static bool test_zephyrgfx_fast_paths(uint8_t rotation)
 
 	return all_match;
 }
+
+/* GFX port Phase D: VueDebug::cadran()/cadranH() are pure virtual (meant
+ * to be implemented by Vue itself, ported last per the plan's own
+ * ordering -- see todo.md). This minimal concrete subclass is a
+ * placeholder standing in for that, just enough to prove
+ * VueDebug::displayDebug() reaches and calls them with sane arguments --
+ * not a preview of the real rendering Vue::cadran()/cadranH() will do. */
+class TestVueDebug : public VueDebug {
+public:
+	// Adafruit_GFX is a *virtual* base of VueDebug, so as the
+	// most-derived class, TestVueDebug (not VueDebug) is responsible for
+	// initializing it directly -- VueDebug's own ": Adafruit_GFX(0, 0)"
+	// initializer is skipped when VueDebug isn't the most-derived class.
+	// Dimensions are irrelevant here (nothing in this test reads
+	// TestVueDebug's own _width/_height; all drawing goes through the
+	// global `vue`).
+	TestVueDebug() : Adafruit_GFX(0, 0)
+	{
+	}
+
+	// VueDebug's virtual Adafruit_GFX base leaves drawPixel() pure
+	// virtual too (Vue's own job in the real hierarchy). displayDebug()
+	// never calls it directly (everything goes through the global `vue`
+	// explicitly, matching stravaV10's own code) -- this only exists so
+	// TestVueDebug is concrete enough to instantiate for the test.
+	void drawPixel(int16_t x, int16_t y, uint16_t color) override
+	{
+		vue.drawPixel(x, y, color);
+	}
+
+	void cadranH(uint8_t p_lig, uint8_t nb_lig, const char *champ, String affi,
+		     const char *p_unite) override
+	{
+		vue.print(champ);
+		vue.print(": ");
+		vue.println(affi);
+	}
+
+	void cadran(uint8_t p_lig, uint8_t nb_lig, uint8_t p_col, const char *champ, String affi,
+		    const char *p_unite) override
+	{
+		vue.print(champ);
+		vue.print("=");
+		vue.println(affi);
+	}
+};
 
 int main(void)
 {
@@ -551,6 +598,38 @@ int main(void)
 		printf("menu: Pair HRM selected -> callback calls=%d (expect 1), menu closed=%d %s\n",
 		       g_menu_test_pair_hrm_calls, !menu.m_is_menu_selected,
 		       pair_ok ? "MATCH" : "MISMATCH");
+	}
+
+	// --- GFX port Phase D: VueDebug. Its own real dependencies
+	// (locator.displayGPS2(), att.date, mes_segments, the STC3100
+	// current/voltage reading) all resolve; only cadran()/cadranH()
+	// themselves are a placeholder (see TestVueDebug above), since those
+	// belong to Vue, ported last. ---
+	{
+		TestVueDebug debug_screen;
+
+		// Deliberately NOT calling locator.init() again here: it's
+		// already been called once above (the earlier local `Locator
+		// locator;` GPS test), and satNumber[]/elevation[]/azimuth[]/
+		// snr[] (which init() registers via TinyGPSCustom::begin() ->
+		// TinyGPSPlus::insertCustom()) are file-scope globals in
+		// Locator.cpp, NOT per-instance state -- shared by every Locator
+		// object, including this different (global) `locator`. Real bug
+		// found the hard way: insertCustom() has no reentrancy guard, so
+		// calling init() a second time re-inserts the same nodes into
+		// gps's internal linked list, corrupting it into a cycle and
+		// hanging the process. This is a genuine constraint on
+		// Locator::init(), not specific to this test -- worth remembering
+		// if/when something later creates another Locator and is tempted
+		// to call init() on it too.
+		vue.fillScreen(1); // white background, same convention as the menu test
+		uint32_t before_debug_pixels = vue.countSetPixels();
+		debug_screen.displayDebug();
+		uint32_t after_debug_pixels = vue.countSetPixels();
+		printf("VueDebug: displayDebug() pixels %u -> %u %s\n", before_debug_pixels,
+		       after_debug_pixels,
+		       after_debug_pixels < before_debug_pixels ? "drew something"
+								  : "BUG: nothing drawn");
 	}
 
 	// --- notifications.c: port of stravaV10's WS2812 status-LED animation

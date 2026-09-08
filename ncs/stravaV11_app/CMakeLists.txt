@@ -80,6 +80,8 @@ target_sources(app PRIVATE
   ${LIB_ROOT}/source/vue/Screenutils.cpp
   ${LIB_ROOT}/source/vue/MenuObjects.cpp
   ${LIB_ROOT}/source/vue/Menuable.cpp
+  ${LIB_ROOT}/source/vue/VueDebug.cpp
+  ${ADAPTERS_ROOT}/debug_screen_data_stub.cpp
   src/menu_content.cpp
   ${ADAPTERS_ROOT}/fram_stub.c
   ${ADAPTERS_ROOT}/gps_mgmt_stub.cpp

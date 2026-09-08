@@ -18,6 +18,11 @@
 
 #include "vue_global.h"
 #include "menu_host.h"
+#include "att_global.h"
 
 ZephyrGFX vue;
 MenuHost menu;
+
+/* GFX port Phase D: see att_global.h's own comment -- stays zero-
+ * initialized until Attitude (not ported) exists to populate it. */
+SAtt att;

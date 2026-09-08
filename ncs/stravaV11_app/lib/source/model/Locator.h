@@ -100,7 +100,13 @@ public:
 	void init();
 	void tasks();
 
-	// displayGPS2() not ported -- UI drawing, belongs with Phase 7.
+	// GFX port Phase D: displayGPS2() ported (see Locator.cpp) -- its full
+	// data dependency (satsInView/satsInUse/sats[]/gps/gps_mgmt) turned
+	// out to already be present in this file since Phase 6 (needed by
+	// other already-ported methods), so restoring the one UI-drawing
+	// method that used them was low-risk, not the blocker it looked like
+	// when first deferred.
+	void displayGPS2(void);
 
 	bool getGPSDate(int &iYr, int &iMo, int &iDay, int &iHr);
 

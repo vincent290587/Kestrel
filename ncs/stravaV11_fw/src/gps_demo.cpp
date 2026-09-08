@@ -24,11 +24,16 @@
 
 #include "Locator.h"
 
-static Locator s_locator;
+/* GFX port Phase D: was `static Locator s_locator;`, private to this file.
+ * Made a real, non-static global (and renamed to match) so
+ * VueDebug.cpp's displayGPS2() call resolves to the actual, live,
+ * NMEA-fed Locator instance -- not a second, always-empty one. Matches
+ * Model.h's original `extern Locator locator;` naming/role. */
+Locator locator;
 
 void gps_demo_init(void)
 {
-	s_locator.init();
+	locator.init();
 }
 
 void gps_demo_inject_location(float lat, float lon, float alt, float speed, float course,
@@ -47,7 +52,7 @@ void gps_demo_inject_location(float lat, float lon, float alt, float speed, floa
 
 	/* Sensor<T>::operator= does the memcpy + setIsUpdated() -- same as a
 	 * real fix flowing through Locator::tasks() would. */
-	s_locator.gps_loc = data;
+	locator.gps_loc = data;
 }
 
 /* Locator::getPosition() is a single-consumer read: it calls
@@ -72,22 +77,22 @@ void gps_demo_inject_location(float lat, float lon, float alt, float speed, floa
 
 bool gps_demo_get_altitude(float *alt_m)
 {
-	if (s_locator.gps_loc.getAge() >= GPS_FIX_STALE_MS) {
+	if (locator.gps_loc.getAge() >= GPS_FIX_STALE_MS) {
 		return false;
 	}
 
-	*alt_m = s_locator.gps_loc.data.alt;
+	*alt_m = locator.gps_loc.data.alt;
 	return true;
 }
 
 bool gps_demo_get_position(float *lat, float *lon)
 {
-	if (s_locator.gps_loc.getAge() >= GPS_FIX_STALE_MS) {
+	if (locator.gps_loc.getAge() >= GPS_FIX_STALE_MS) {
 		return false;
 	}
 
-	*lat = s_locator.gps_loc.data.lat;
-	*lon = s_locator.gps_loc.data.lon;
+	*lat = locator.gps_loc.data.lat;
+	*lon = locator.gps_loc.data.lon;
 	return true;
 }
 
@@ -95,7 +100,7 @@ void gps_demo_report(void)
 {
 	SLoc loc = {};
 	SDate date = {};
-	eLocationSource src = s_locator.getPosition(loc, date);
+	eLocationSource src = locator.getPosition(loc, date);
 
 	if (src != eLocationSourceGPS) {
 		printk("locator: no GPS update yet (source=%d)\n", (int)src);

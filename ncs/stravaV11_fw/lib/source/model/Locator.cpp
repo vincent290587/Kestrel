@@ -18,6 +18,10 @@
 // adapters/gps_mgmt_stub.cpp.
 extern GPS_MGMT gps_mgmt;
 
+// Also normally declared in Model.h -- displayGPS2() (GFX port Phase D) is
+// the only method in this file that needs it.
+#include "vue_global.h"
+
 #include <vector>
 
 #define NB_SATS_TO_DETAIL           7
@@ -371,8 +375,57 @@ bool Locator::getGPSDate(int& iYr, int& iMo, int& iDay, int& iHr) {
 
 
 /**
- *
+ * GFX port Phase D: ported unmodified except dropping the sysview_task_void_
+ * enter()/exit() SystemView profiling calls (SDK16 tracing, not ported --
+ * Zephyr has its own tracing subsystem/SystemView backend if this is ever
+ * wanted again, per the original architecture survey's "trash" category).
  */
-// displayGPS2() (raw LS027/vue screen dump) isn't ported -- it's UI drawing,
-// not GPS logic. Belongs with the Phase 7 UI port instead.
+void Locator::displayGPS2(void)
+{
+	vue.setCursor(20, 20);
+	vue.setTextSize(2);
+
+	vue.print(" ");
+	vue.print(satsInUse.value());
+	vue.print(" used out of ");
+	vue.println(satsInView.value());
+	vue.println("");
+
+	if (gps.location.isValid()) {
+		vue.println(" Loc valid");
+	} else {
+		vue.println(" Loc pb");
+	}
+
+	String line = " Loc age: ";
+	line += String((int)gps.location.age());
+	vue.println(line);
+
+	if (gps_mgmt.isFix()) {
+		vue.println(" FIX pin high");
+	} else {
+		vue.println(" No fix");
+	}
+
+	line = " GPSMGMT ";
+	line += gps_mgmt.getPowerState();
+	vue.println(line);
+
+	line = " Time age: ";
+	line += String((int)gps.time.age());
+	vue.println(line);
+
+	vue.println("  ----- SAT -----");
+
+	for (uint16_t i = 0; i < sats.size(); i++) {
+
+		line = " ID ";
+		line += sats[i].no;
+		vue.print(line);
+		vue.setCursorX(160);
+		line = "";
+		line += sats[i].snr;
+		vue.println(line);
+	}
+}
 

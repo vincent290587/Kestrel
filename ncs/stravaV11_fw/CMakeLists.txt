@@ -93,7 +93,10 @@ target_sources(app PRIVATE
   src/vue_globals.cpp
   lib/source/vue/MenuObjects.cpp
   lib/source/vue/Menuable.cpp
+  lib/source/vue/Screenutils.cpp
+  lib/source/vue/VueDebug.cpp
   src/menu_content.cpp
+  src/debug_screen_data.cpp
   lib/bt_cp_client.c
   lib/ant_fec.c
   lib/ant_device_manager.c
