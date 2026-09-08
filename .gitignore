@@ -36,3 +36,14 @@
 # Kconfig string, not a header define, for this -- see that CMakeLists.txt).
 # Kept out of git as credential-like material, same as any license/API key.
 /ANT_license.h
+
+# Project-specific MCUboot image-signing private key (generated once via
+# imgtool.py keygen, referenced by stravaV11_fw/sysbuild.conf's
+# SB_CONFIG_BOOT_SIGNATURE_KEY_FILE). Before this, the build used
+# MCUboot's own upstream root-ec-p256.pem sample key -- fine for early
+# bring-up, but that key's private half is public (checked into the open
+# source mcuboot repo), so anyone could forge an image MCUboot would
+# accept. Never commit this file: whoever holds it can sign a firmware
+# image this board's bootloader will trust. See COMMANDS.md for
+# regeneration/rotation.
+/mcuboot_signing_key.pem

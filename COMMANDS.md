@@ -194,6 +194,115 @@ nonspecific error (`status 1`, `status -11`) with no useful message --
 that's usually just flaky tooling, not a real problem; retry once or twice
 before concluding anything is actually wrong.
 
+## Firmware update over BLE (DFU)
+
+`stravaV11_fw` advertises MCUmgr/SMP over BLE (`src/smp_demo.{h,c}`, Phase
+10) so a new signed image can be pushed from this machine's own Bluetooth
+adapter -- no J-Link/`west flash` needed for an update, once the very
+first MCUboot+app image is on the board. `tools/dfu_update.py` (uses the
+`smpclient[ble]` package, already in this repo's venv -- no `mcumgr` CLI
+needed) wraps the upload/reset/verify cycle:
+
+```bash
+cd stravaV11_fw
+source /home/vincent/Github/StravaV11/.venv/bin/activate
+
+# Find the board (scans for the SMP service UUID + advertised name "stravaV11")
+python3 tools/dfu_update.py scan
+
+# Check current slot state without changing anything
+python3 tools/dfu_update.py status
+
+# Upload a freshly built signed image, reset, and verify the swap
+python3 tools/dfu_update.py upload <build-dir>/stravaV11_fw/zephyr/zephyr.signed.bin
+```
+
+Pass `--address AA:BB:CC:DD:EE:FF` to skip scanning (useful if multiple
+`stravaV11`-named devices are ever around), or `--name` to match a
+different advertised name.
+
+**Validated end-to-end on real hardware (2026-09-08)**: reflashed the
+board via J-Link with the new project-owned key (see below), then built a
+second image (version bumped to `0.0.1` via a one-off
+`-DCONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION=\"0.0.1+0\"` build arg -- no source
+change) and pushed it over BLE with `dfu_update.py upload --confirm`.
+Confirmed durable across two independent hardware resets afterward
+(`status` kept reporting `slot=0 version=0.0.1 ... [confirmed active]`).
+
+**Test vs. confirm, and why `upload` doesn't confirm by default**: MCUboot
+boots an uploaded image as a *test* -- if it never gets marked permanent
+(and the app itself doesn't call `boot_write_img_confirmed()`, which this
+port doesn't yet), the **next** reset reverts to the previous image
+automatically. A plain upload does **not** automatically mark the new
+image pending/test -- that's a separate MCUmgr request
+(`image state set`), which `upload` issues itself right after the upload
+finishes. `upload` then verifies the swap produced the exact image you
+uploaded (by comparing the device-reported hash against the image's own
+embedded SHA256 TLV, not just "did a reset happen") and leaves it as a
+test boot unless you pass `--confirm`, or run `dfu_update.py confirm`
+afterward once you're satisfied it's actually working:
+
+```bash
+python3 tools/dfu_update.py confirm
+```
+
+**Gotcha found on real hardware**: if the uploaded image's content is
+byte-identical to the slot that's currently *active* (e.g. re-uploading
+the exact same `.signed.bin` you're already running, the "safe" DFU
+smoke-test trick used earlier in this project's history), marking it
+"test" is rejected outright (`IMAGE_SETTING_TEST_TO_ACTIVE_DENIED`) --
+MCUmgr won't let you test-boot into the image that's already running.
+Use an image with genuinely different content (a real code change, or at
+minimum a version bump via the build arg above) to exercise a real
+test-then-confirm cycle.
+
+Useful flags on `upload`: `--no-reset` (stage the image, don't reboot into
+it yet), `--no-verify` (reset but don't reconnect to check afterward),
+`--reboot-wait <seconds>` (default 45s -- `main()` brings up many other
+subsystems before BLE/SMP advertising starts; measured as long as ~70s on
+this board, so don't set this too low).
+
+**Real, reproducible BLE flakiness, not a firmware bug**: the *first*
+connect or GATT write after a fresh scan frequently fails at the host
+BlueZ/bleak level -- either `bleak.exc.BleakError: failed to discover
+services, device disconnected` during connect, or an outright
+`SMPTransportDisconnected` on the very first upload chunk. RTT captures
+taken during these failures show the board staying completely healthy
+throughout (no faults, still advertising normally afterward) -- this is
+host-side, not firmware. `dfu_update.py` retries the whole command
+automatically on this class of error (`--retries`, default 3); if you
+still see it fail outright, just rerun the command.
+
+### Signing key
+
+Images are signed at build time (sysbuild's own MCUboot integration,
+`stravaV11_fw/sysbuild.conf`) against a **project-owned** EC-P256 key at
+the repo root, `mcuboot_signing_key.pem` -- gitignored, never commit it:
+whoever holds it can sign a firmware image this board's MCUboot will
+accept as genuine. This replaced MCUboot's own upstream sample key
+(`bootloader/mcuboot/root-ec-p256.pem`) that the build used through the
+first DFU validation in Phase 10 -- fine for proving the mechanism works,
+but that sample key's *private* half is checked into the public mcuboot
+repo, so it verified nothing about image authenticity.
+
+If `mcuboot_signing_key.pem` is ever lost, or you deliberately want to
+rotate it, regenerate with:
+
+```bash
+cd /home/vincent/Github/StravaV11
+source .venv/bin/activate
+python3 ncs/bootloader/mcuboot/scripts/imgtool.py keygen \
+  -k mcuboot_signing_key.pem -t ecdsa-p256
+```
+
+Then rebuild and reflash **via `west flash`/J-Link, not over BLE** --
+a board running an image signed by the old key can't be updated
+over-the-air with one signed by a new key (its embedded MCUboot only
+trusts the old key's public half), so a key rotation needs a wired
+reflash to take effect. `sysbuild.conf`'s
+`SB_CONFIG_BOOT_SIGNATURE_KEY_FILE` already points at this path; nothing
+else needs to change for a same-path regeneration.
+
 ## SD card via USB MSC
 
 The SD card mounts as a normal USB drive once the board enumerates (see
