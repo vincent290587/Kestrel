@@ -27,6 +27,19 @@
  * mounting; confirmed against the real board that this board's application
  * wants portrait too, so callers should setRotation(1) or (3) as
  * appropriate rather than relying on the class's native landscape 400x240.
+ *
+ * GFX port Phase B (2026-09-08): added buffer-native drawFastVLine()/
+ * drawFastHLine() overrides. Adafruit_GFX's own fillRect() is just a loop
+ * of drawFastVLine() calls per column (confirmed by reading
+ * Adafruit_GFX.cpp directly, same as stravaV10's own Vue::fillRect() ->
+ * drawFastVLine() -> drawPixelGroup() strategy) -- overriding
+ * drawFastVLine()/drawFastHLine() alone, without also needing a separate
+ * fillRect() override, makes every caller of fillRect()/drawFastVLine()/
+ * drawFastHLine() buffer-native automatically. Without this, those calls
+ * fall through to Adafruit_GFX's default per-pixel-loop implementation --
+ * fine for the sparse polyline drawing map_render.cpp already validated,
+ * but a real risk for the fillRect-heavy screens (histogram bars,
+ * notification banners, full-screen clears) the actual UI port needs.
  */
 
 #ifndef SOURCE_VUE_ZEPHYRGFX_H_
@@ -43,6 +56,8 @@ public:
 	ZephyrGFX();
 
 	void drawPixel(int16_t x, int16_t y, uint16_t color) override;
+	void drawFastVLine(int16_t x, int16_t y, int16_t h, uint16_t color) override;
+	void drawFastHLine(int16_t x, int16_t y, int16_t w, uint16_t color) override;
 	void fillScreen(uint16_t color) override;
 
 	const uint8_t *getBuffer() const {
@@ -60,6 +75,31 @@ public:
 
 private:
 	uint8_t m_buffer[ZEPHYR_GFX_BUFFER_SIZE];
+
+	/* Rotation transform factored out of drawPixel() so
+	 * drawFastVLine()/drawFastHLine() apply the exact same logic instead
+	 * of risking the two silently drifting apart. Same case-by-case
+	 * transform as before, just returning the result instead of writing
+	 * straight to the buffer. */
+	void logicalToBuffer(int16_t x, int16_t y, int16_t *bx, int16_t *by) const;
+
+	/* Shared by drawFastVLine()/drawFastHLine(): after rotation, a
+	 * logical axis-aligned span lands as either a horizontal or a
+	 * vertical run in buffer space (rotation by a multiple of 90 degrees
+	 * preserves axis alignment) -- this dispatches to whichever one it
+	 * turns out to be. lx0<=lx1, ly0<=ly1 not required by the caller;
+	 * this handles both orderings. */
+	void drawFastLineSpan(int16_t lx0, int16_t ly0, int16_t lx1, int16_t ly1, uint16_t color);
+
+	/* Low-level buffer-space span fills -- bx0<=bx1 / by0<=by1 required
+	 * (callers normalize). Byte-aligned bulk set/clear for the
+	 * horizontal case (the common one at this port's validated
+	 * rotation=3, where a logical vertical line becomes a horizontal
+	 * buffer run); a tight per-row loop for the vertical case, still
+	 * avoiding drawPixel()'s per-call bounds-check+rotation-switch
+	 * overhead. */
+	void fillBufferHSpan(int16_t by, int16_t bx0, int16_t bx1, uint16_t color);
+	void fillBufferVSpan(int16_t bx, int16_t by0, int16_t by1, uint16_t color);
 };
 
 #endif /* SOURCE_VUE_ZEPHYRGFX_H_ */

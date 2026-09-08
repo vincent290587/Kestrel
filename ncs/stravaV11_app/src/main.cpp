@@ -25,6 +25,8 @@
 #include "UserSettings.h"
 #include "Locator.h"
 #include "ZephyrGFX.h"
+#include "Screenutils.h"
+#include "millis.h"
 #include "Org_01.h"
 #include "map_tile.h"
 #include "test_tile_data.h"
@@ -99,6 +101,93 @@ static int32_t riscv_hostcall_handler(struct rv32_cpu *cpu, void *user_data, int
 	default:
 		return -1;
 	}
+}
+
+/* GFX port Phase B: cross-checks ZephyrGFX's new buffer-native
+ * drawFastVLine()/drawFastHLine() (and, via Adafruit_GFX's own fillRect()
+ * -> loop-of-drawFastVLine() default, fillRect() too) against a naive
+ * per-pixel drawPixel() reference -- the property that actually matters
+ * (the optimization produces byte-identical results to the slow path it
+ * replaces), not just "didn't crash". Runs at both rotation=0 (untested
+ * orientation) and rotation=3 (this port's real, validated orientation)
+ * since the buffer-space span direction differs between them (see
+ * ZephyrGFX.cpp's own comment). Returns true if every case matched. */
+static bool test_zephyrgfx_fast_paths(uint8_t rotation)
+{
+	ZephyrGFX fast, ref;
+
+	fast.setRotation(rotation);
+	ref.setRotation(rotation);
+
+	const int16_t w = fast.width();
+	const int16_t h = fast.height();
+
+	struct Rect {
+		int16_t x, y, w, h;
+	};
+
+	/* Fractions of the current (rotation-dependent) screen size, plus a
+	 * few fixed edge cases -- byte-aligned/non-aligned starts, spans
+	 * crossing a byte boundary, single-pixel, and clipping off all four
+	 * edges (negative x/y, x+w/y+h past the far edge). */
+	const Rect rects[] = {
+		{ 0, 0, w, h },                                 // full screen
+		{ 3, 5, 13, 7 },                                 // unaligned start, multi-byte span
+		{ (int16_t)(w - 5), 10, 10, 5 },                 // clipped on the right
+		{ -5, (int16_t)(h / 2), 20, 3 },                 // clipped on the left
+		{ (int16_t)(w / 2), -3, 4, 10 },                 // clipped on the top
+		{ (int16_t)(w / 2), (int16_t)(h - 5), 4, 20 },   // clipped on the bottom
+		{ 7, 7, 1, 1 },                                  // single pixel
+		{ 0, 0, 1, h },                                  // full-height, byte-aligned column
+		{ (int16_t)(w - 1), 0, 1, h },                   // rightmost column
+	};
+
+	bool all_match = true;
+
+	for (const Rect &r : rects) {
+		fast.fillScreen(0);
+		ref.fillScreen(0);
+
+		fast.fillRect(r.x, r.y, r.w, r.h, 1);
+
+		for (int16_t px = r.x; px < r.x + r.w; px++) {
+			for (int16_t py = r.y; py < r.y + r.h; py++) {
+				ref.drawPixel(px, py, 1);
+			}
+		}
+
+		bool match = memcmp(fast.getBuffer(), ref.getBuffer(), fast.getBufferSize()) == 0;
+
+		all_match = all_match && match;
+
+		printf("  rotation=%u rect(%d,%d,%d,%d) via fillRect: fast=%u ref=%u pixels %s\n",
+		       rotation, r.x, r.y, r.w, r.h, fast.countSetPixels(), ref.countSetPixels(),
+		       match ? "MATCH" : "MISMATCH");
+	}
+
+	/* Also exercise drawFastHLine()/drawFastVLine() directly (not just as
+	 * fillRect()'s inner loop) -- a single-row/single-column span each. */
+	fast.fillScreen(0);
+	ref.fillScreen(0);
+	fast.drawFastHLine(2, 3, (int16_t)(w - 4), 1);
+	for (int16_t px = 2; px < w - 2; px++) {
+		ref.drawPixel(px, 3, 1);
+	}
+	bool hline_match = memcmp(fast.getBuffer(), ref.getBuffer(), fast.getBufferSize()) == 0;
+	all_match = all_match && hline_match;
+	printf("  rotation=%u drawFastHLine direct: %s\n", rotation, hline_match ? "MATCH" : "MISMATCH");
+
+	fast.fillScreen(0);
+	ref.fillScreen(0);
+	fast.drawFastVLine(4, 2, (int16_t)(h - 4), 1);
+	for (int16_t py = 2; py < h - 2; py++) {
+		ref.drawPixel(4, py, 1);
+	}
+	bool vline_match = memcmp(fast.getBuffer(), ref.getBuffer(), fast.getBufferSize()) == 0;
+	all_match = all_match && vline_match;
+	printf("  rotation=%u drawFastVLine direct: %s\n", rotation, vline_match ? "MATCH" : "MISMATCH");
+
+	return all_match;
 }
 
 int main(void)
@@ -310,6 +399,65 @@ int main(void)
 #if defined(CONFIG_ARCH_POSIX)
 	sleep(2); // gives the simulator window time to actually show this frame
 #endif
+
+	// --- ZephyrGFX: GFX port Phase B -- buffer-native drawFastVLine()/
+	// drawFastHLine() cross-checked against a naive per-pixel reference,
+	// at both rotation=0 and this port's real, validated rotation=3. ---
+	{
+		bool rot0_ok = test_zephyrgfx_fast_paths(0);
+		bool rot3_ok = test_zephyrgfx_fast_paths(3);
+
+		printf("ZephyrGFX fast-path cross-check: rotation=0 %s, rotation=3 %s\n",
+		       rot0_ok ? "all MATCH" : "SOME MISMATCH", rot3_ok ? "all MATCH" : "SOME MISMATCH");
+	}
+
+	// --- Screenutils: GFX port Phase A -- ported unmodified except dropping
+	// the dead Attitude.h include (see Screenutils.h's own comment). Zero
+	// Model coupling: pure math (rotate_point/course_to) and value->String
+	// formatting (_imkstr/_fmkstr/_secjmkstr/_timemkstr), built on
+	// already-ported WString/millis/SDate. Cross-checked against
+	// hand-computed expected values, not just "didn't crash". ---
+	{
+		int16_t rx = 0, ry = 0;
+		rotate_point(90.f, 0, 0, 1, 0, rx, ry);
+		bool rotate_ok = (rx == 0 && ry == 1);
+		printf("Screenutils: rotate_point(90deg, (1,0) around origin) -> (%d,%d) (expect (0,1)) %s\n",
+		       rx, ry, rotate_ok ? "MATCH" : "MISMATCH");
+
+		float course = course_to(0.f, 0.f, 0.f, 1.f);
+		bool course_ok = fabsf(course - 90.f) < 0.01f;
+		printf("Screenutils: course_to((0,0) -> (0,1)) = %.2f deg (expect 90.00, due east) %s\n",
+		       (double)course, course_ok ? "MATCH" : "MISMATCH");
+
+		String si = _imkstr(42);
+		bool imkstr_ok = (si == "42");
+		printf("Screenutils: _imkstr(42) = \"%s\" (expect \"42\") %s\n", si.c_str(),
+		       imkstr_ok ? "MATCH" : "MISMATCH");
+
+		String sf = _fmkstr(3.14159f, 2);
+		bool fmkstr_ok = (sf == "3.14");
+		printf("Screenutils: _fmkstr(3.14159, 2) = \"%s\" (expect \"3.14\") %s\n", sf.c_str(),
+		       fmkstr_ok ? "MATCH" : "MISMATCH");
+
+		String st1 = _secjmkstr(3661, ':');
+		bool secj_ok = (st1 == "01:01:01");
+		printf("Screenutils: _secjmkstr(3661s, ':') = \"%s\" (expect \"01:01:01\") %s\n",
+		       st1.c_str(), secj_ok ? "MATCH" : "MISMATCH");
+
+		String st2 = _secjmkstr(90000, ':'); // >= 86400s -- out-of-range placeholder path
+		bool secj_oor_ok = (st2 == " --:--:--");
+		printf("Screenutils: _secjmkstr(90000s, ':') = \"%s\" (expect \" --:--:--\") %s\n",
+		       st2.c_str(), secj_oor_ok ? "MATCH" : "MISMATCH");
+
+		SDate now_date = {};
+		now_date.secj = 0;
+		now_date.timestamp = millis(); // "now", so _timemkstr's own
+		                                // (millis() - timestamp) addition is ~0
+		String stime = _timemkstr(now_date, ':');
+		bool time_ok = stime.startsWith("00:00:0");
+		printf("Screenutils: _timemkstr(secj=0, taken \"now\") = \"%s\" (expect ~\"00:00:00\") %s\n",
+		       stime.c_str(), time_ok ? "MATCH" : "MISMATCH");
+	}
 
 	// --- notifications.c: port of stravaV10's WS2812 status-LED animation
 	// state machine, backed here by drv_ws2812_stub.c (no real LED on
