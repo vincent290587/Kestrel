@@ -90,6 +90,10 @@ target_sources(app PRIVATE
   src/notifications_demo.c
   src/settings_demo.cpp
   src/model_glue.c
+  src/vue_globals.cpp
+  lib/source/vue/MenuObjects.cpp
+  lib/source/vue/Menuable.cpp
+  src/menu_content.cpp
   lib/bt_cp_client.c
   lib/ant_fec.c
   lib/ant_device_manager.c

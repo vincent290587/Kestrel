@@ -27,6 +27,9 @@
 #include "ZephyrGFX.h"
 #include "Screenutils.h"
 #include "millis.h"
+#include "menu_host.h"
+#include "vue_global.h"
+#include "button.h"
 #include "Org_01.h"
 #include "map_tile.h"
 #include "test_tile_data.h"
@@ -457,6 +460,97 @@ int main(void)
 		bool time_ok = stime.startsWith("00:00:0");
 		printf("Screenutils: _timemkstr(secj=0, taken \"now\") = \"%s\" (expect ~\"00:00:00\") %s\n",
 		       stime.c_str(), time_ok ? "MATCH" : "MISMATCH");
+	}
+
+	// --- GFX port Phase D: Menuable/MenuObjects (menu widget system) --
+	// reusable class mechanics ported unmodified from stravaV10; the menu
+	// tree itself (menu_content.cpp) is new for this port, not a straight
+	// port, since stravaV10's real tree needs Boucle* (not ported) --
+	// see menu_content.cpp's own top-of-file note. Exercises real
+	// navigation state transitions and a real UserSettings round trip
+	// (not stubbed), cross-checked against expected values, not just
+	// "didn't crash". ---
+	{
+		extern int g_menu_test_pair_hrm_calls;
+
+		menu.initMenu();
+
+		/* Real bug found here: Adafruit_GFX's own default textcolor is 1
+		 * ("white" under this port's 1=white ZephyrGFX convention -- see
+		 * ZephyrGFX.h), so without this, menu text would be invisible
+		 * white-on-white -- same class of bug gfx_demo.cpp's screens
+		 * already had to fix (its own "switched to conventional
+		 * black-ink-on-white-background" note). A future ported Vue::
+		 * init() should set this once; stood in for that here since it
+		 * doesn't exist yet. */
+		vue.setTextColor(0);
+
+		// Boot-time debounce: an event sent immediately after initMenu()
+		// must be ignored (see Menuable::propagateEvent()'s own comment).
+		menu.propagateEvent(eButtonsEventCenter);
+		bool debounce_ok = !menu.m_is_menu_selected;
+		printf("menu: event sent before the 5s boot debounce -> selected=%d (expect 0) %s\n",
+		       menu.m_is_menu_selected, debounce_ok ? "MATCH" : "MISMATCH");
+
+		delay_ms(5100);
+
+		// Open the menu, then render it. vue's buffer starts all-white
+		// (ZephyrGFX inits to 0xFF); drawing black (0) text/highlights
+		// onto it *decreases* the set-pixel count -- same direction the
+		// map_render test below already learned the hard way (its own
+		// comment: "black-background ZephyrGFX test" is the one that
+		// increases; this one's the opposite, white background).
+		uint32_t before_menu_pixels = vue.countSetPixels();
+		menu.propagateEvent(eButtonsEventCenter);
+		bool opened_ok = menu.m_is_menu_selected;
+		menu.tasksMenu();
+		uint32_t after_menu_pixels = vue.countSetPixels();
+		printf("menu: opened after debounce -> selected=%d (expect 1) %s; render pixels %u -> "
+		       "%u %s\n",
+		       menu.m_is_menu_selected, opened_ok ? "MATCH" : "MISMATCH", before_menu_pixels,
+		       after_menu_pixels,
+		       after_menu_pixels < before_menu_pixels ? "drew something" : "BUG: nothing drawn");
+
+		// Root page items, in order: [0]=Back (auto-inserted), [1]=Pair
+		// HRM, [2]=Pair BSC, [3]=Pair FEC, [4]=Set FTP, [5]=Set Weight --
+		// ind_sel starts at 0, so 4x Right reaches "Set FTP".
+		for (int i = 0; i < 4; i++) {
+			menu.propagateEvent(eButtonsEventRight);
+		}
+		menu.propagateEvent(eButtonsEventCenter); // select "Set FTP"
+
+		uint16_t ftp_before = u_settings.getFTP();
+
+		menu.propagateEvent(eButtonsEventLeft); // decrement the setting value
+		menu.propagateEvent(eButtonsEventLeft);
+		menu.propagateEvent(eButtonsEventLeft);
+		menu.propagateEvent(eButtonsEventCenter); // commit (post_hook -> writeConfig())
+
+		uint16_t ftp_after = u_settings.getFTP();
+		// Committing a setting returns to its parent page (the root menu),
+		// it does NOT close the whole menu -- MenuPage::goToParent() only
+		// calls closeMenu() when the current page has no parent at all.
+		bool ftp_ok = (ftp_after == ftp_before - 3) && menu.m_is_menu_selected;
+		printf("menu: Set FTP %u -> 3x Left -> commit -> %u (expect %u), menu still open=%d "
+		       "(expect 1) %s\n",
+		       ftp_before, ftp_after, ftp_before - 3, menu.m_is_menu_selected,
+		       ftp_ok ? "MATCH" : "MISMATCH");
+
+		// Menu is already open here, back at the root page with ind_sel
+		// reset to 0 ("Back") by the goToParent() above -- select
+		// "Pair HRM" ([1], one Right press) to check dispatch reaches the
+		// right callback (see menu_content.cpp's test-observable call
+		// counters) and that returning eFuncMenuActionEndMenu closes the
+		// menu (unlike a setting page's own goToParent(), MenuItem::
+		// clickAction() calls closeMenuPopagate() -> closeMenu()
+		// directly on EndMenu, regardless of page nesting).
+		menu.propagateEvent(eButtonsEventRight);  // -> "Pair HRM"
+		menu.propagateEvent(eButtonsEventCenter); // select it
+
+		bool pair_ok = (g_menu_test_pair_hrm_calls == 1) && !menu.m_is_menu_selected;
+		printf("menu: Pair HRM selected -> callback calls=%d (expect 1), menu closed=%d %s\n",
+		       g_menu_test_pair_hrm_calls, !menu.m_is_menu_selected,
+		       pair_ok ? "MATCH" : "MISMATCH");
 	}
 
 	// --- notifications.c: port of stravaV10's WS2812 status-LED animation

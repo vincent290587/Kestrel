@@ -78,6 +78,9 @@ target_sources(app PRIVATE
   ${LIB_ROOT}/libraries/AdafruitGFX/Print.cpp
   ${LIB_ROOT}/source/vue/ZephyrGFX.cpp
   ${LIB_ROOT}/source/vue/Screenutils.cpp
+  ${LIB_ROOT}/source/vue/MenuObjects.cpp
+  ${LIB_ROOT}/source/vue/Menuable.cpp
+  src/menu_content.cpp
   ${ADAPTERS_ROOT}/fram_stub.c
   ${ADAPTERS_ROOT}/gps_mgmt_stub.cpp
   ${ADAPTERS_ROOT}/millis_zephyr.c
