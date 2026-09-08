@@ -16,6 +16,7 @@
 #include "RRZone.h"
 #include "SufferScore.h"
 #include "g_structs.h"
+#include "SegmentManager.h"
 
 UserSettings u_settings;
 
@@ -41,6 +42,13 @@ SAtt att;
  * nothing else needs to share it. */
 Locator locator;
 ListeSegments mes_segments;
+
+/* GFX port Phase D: VuePRC.cpp's global -- the same SegmentManager class
+ * ported in Phase 1 (segment scoring/ordering bookkeeping), now with a
+ * real, live instance. Starts empty (getNbSegs()==0), same "no ride data
+ * yet" honesty as zPower/rrZones/suffer_score above -- nothing loads real
+ * segments into it yet. */
+SegmentManager segMngr;
 
 /* GFX port Phase D: VueFEC.cpp's globals -- zPower/rrZones are the same
  * PowerZone/RRZone classes already ported (Phase 1) and already

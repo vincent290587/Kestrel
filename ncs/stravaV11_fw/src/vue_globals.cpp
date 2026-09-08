@@ -23,9 +23,20 @@
 #include "RRZone.h"
 #include "SufferScore.h"
 #include "g_structs.h"
+#include "SegmentManager.h"
 
 VueBase vue;
 MenuHost menu;
+
+/* GFX port Phase D: VuePRC.cpp's global -- the routes/ tier (Points,
+ * Vecteur, ListePoints, Segment, Parcours) and SegmentManager are new to
+ * this app as of VuePRC (every earlier screen here routed around them via
+ * debug_screen_data.h's segment *count*, not the real types -- see that
+ * header's own comment), copied from stravaV11_app unmodified, same
+ * "already proven portable" precedent as everything else in lib/source/.
+ * Starts empty (getNbSegs()==0), same "no ride data yet" honesty as
+ * zPower/rrZones/suffer_score above. */
+SegmentManager segMngr;
 
 /* GFX port Phase D: see att_global.h's own comment -- stays zero-
  * initialized until Attitude (not ported) exists to populate it. */

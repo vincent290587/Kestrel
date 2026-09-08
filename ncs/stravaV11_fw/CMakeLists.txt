@@ -60,6 +60,7 @@ target_include_directories(app PRIVATE
   lib/source/maps
   lib/source/display
   lib/source/parsers
+  lib/source/routes
   adapters
 )
 
@@ -97,6 +98,13 @@ target_sources(app PRIVATE
   lib/source/vue/VueDebug.cpp
   lib/source/vue/VueGPS.cpp
   lib/source/vue/VueFEC.cpp
+  lib/source/vue/VuePRC.cpp
+  lib/source/routes/Points.cpp
+  lib/source/routes/Vecteur.cpp
+  lib/source/routes/ListePoints.cpp
+  lib/source/routes/Segment.cpp
+  lib/source/routes/Parcours.cpp
+  lib/source/display/SegmentManager.cpp
   src/menu_content.cpp
   src/debug_screen_data.cpp
   lib/source/g_structs.c

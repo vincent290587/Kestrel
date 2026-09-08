@@ -33,6 +33,9 @@
 #include "VueDebug.h"
 #include "VueGPS.h"
 #include "VueFEC.h"
+#include "VuePRC.h"
+#include "Parcours.h"
+#include "att_global.h"
 #include "Org_01.h"
 #include "map_tile.h"
 #include "test_tile_data.h"
@@ -197,16 +200,29 @@ static bool test_zephyrgfx_fast_paths(uint8_t rotation)
 }
 
 /* GFX port Phase D: cadran()/cadranH()/cadranRR()/Histo()/HistoH() are
- * pure virtual on VueDebug/VueGPS/VueFEC (meant to be implemented by Vue
- * itself, ported last per the plan's own ordering -- see todo.md). This
- * minimal concrete class combines VueDebug+VueGPS+VueFEC (all three
- * virtually inherit the same Adafruit_GFX base, so this is a real,
+ * pure virtual on VueDebug/VueGPS/VueFEC/VuePRC (meant to be implemented
+ * by Vue itself, ported last per the plan's own ordering -- see todo.md).
+ * This minimal concrete class combines VueDebug+VueGPS+VueFEC+VuePRC (all
+ * four virtually inherit the same Adafruit_GFX base, so this is a real,
  * if partial, preview of how the eventual Vue class assembles them) and
  * implements their shared pure virtuals ONCE as placeholders -- just
  * enough to prove each screen's own tasksXxx()/displayXxx() logic
  * reaches and calls them with sane arguments, not a preview of the real
- * rendering Vue::cadran() etc. will do. */
-class TestVueScreens : public VueDebug, public VueGPS, public VueFEC {
+ * rendering Vue::cadran() etc. will do.
+ *
+ * VueGPS is inherited virtually here even though VueDebug/VueFEC aren't
+ * (a real, non-obvious diamond gotcha, hit while adding VuePRC, not
+ * something copy-pasted from a template): VuePRC.h itself already
+ * declares `virtual public VueGPS` (stravaV10's own original, since
+ * VuePRC needs VueGPS's displayGPS() for its own eVuePRCScreenGps mode),
+ * so once VuePRC joined this base list, a *non*-virtual VueGPS base here
+ * created two separate VueGPS subobjects -- one direct, one via VuePRC --
+ * making every VueGPS member (displayGPS() first) genuinely ambiguous at
+ * compile time. Declaring the direct base `virtual` too merges it back
+ * into VuePRC's own virtual VueGPS subobject, restoring a single shared
+ * instance -- the same fix stravaV10's real `Vue` class would need if it
+ * ever combined VuePRC with a directly-named VueGPS base the same way. */
+class TestVueScreens : public VueDebug, virtual public VueGPS, public VueFEC, public VuePRC {
 public:
 	// Adafruit_GFX is a *virtual* base shared by all three, so as the
 	// most-derived class, TestVueScreens (not any one of them) is
@@ -285,6 +301,33 @@ public:
 	eVueFECScreenModes testTasksFEC()
 	{
 		return this->tasksFEC();
+	}
+
+	// afficheParcours()/afficheSegment() are `protected` on VuePRC (see
+	// VuePRC.h's own comment on why -- widened from stravaV10's original
+	// `private` so a derived test harness like this one can exercise them
+	// directly with real constructed Parcours/Segment data, independently
+	// of tasksPRC() -- which, per VuePRC.cpp's own top-of-file note, can
+	// never actually reach them itself in this port: p_parcours is always
+	// nullptr there). Same thin-forwarder pattern as testTasksFEC() above.
+	void testAfficheParcours(uint8_t ligne, ListePoints2D *p_liste)
+	{
+		this->afficheParcours(ligne, p_liste);
+	}
+
+	void testAfficheSegment(uint8_t ligne, Segment *p_seg)
+	{
+		this->afficheSegment(ligne, p_seg);
+	}
+
+	// Zoom's public API (increaseZoom()/decreaseZoom()/getZoomLevel()/...)
+	// becomes `protected` on VuePRC via `protected Zoom` inheritance, so
+	// it's likewise only reachable from within a derived class -- this
+	// forwarder lets the test below observe propagateEventsPRC()'s actual
+	// effect on zoom state, not just that it didn't crash.
+	uint8_t testGetZoomLevel()
+	{
+		return this->getZoomLevel();
 	}
 };
 
@@ -734,6 +777,121 @@ int main(void)
 		       fec_data_ok ? "MATCH" : "MISMATCH");
 
 		fec_info.el_time = 0; // leave global state clean for anything running after this
+	}
+
+	// --- GFX port Phase D: VuePRC, same TestVueScreens instance. Real
+	// dependencies (locator.getLastUpdateAge(), att, segMngr,
+	// hrm_info/bsc_info, the STC3100 reading) all resolve; tasksPRC()
+	// itself is a deliberate trim (p_parcours is always nullptr -- see
+	// VuePRC.cpp's own top-of-file note for why), so this test also
+	// directly exercises afficheParcours()/afficheSegment() with real
+	// constructed Parcours/Segment data via the testAffiche*() forwarders,
+	// which tasksPRC() can never reach on its own in this port. ---
+	{
+		// A real 4-point Parcours (ajouterPointFin() takes lat/lon/alt,
+		// same API Segment's own ajouterPointFin() uses, just on
+		// Point2D/ListePoints2D instead of Point/ListePoints). Point
+		// spacing (~5-6m, real 1Hz-cycling-speed scale) is deliberately
+		// tight, not the ~50-250m spacing an earlier attempt used: real
+		// bug found running this test the first time -- Zoom::computeZoom()
+		// at the default zoom level (BASE_ZOOM_LEVEL=10) and this
+		// screen-quadrant's own span (setSpan(400, ~68) for a 1/7-height
+		// row) works out to a latitude half-span of only ~0.00038 degrees
+		// (~42m) -- afficheParcours()'s/afficheSegment()'s own "only draw
+		// points inside the current zoom window" filtering correctly (not
+		// a code bug) drew nothing when the wider-spaced test points fell
+		// entirely outside that window. Tight spacing keeps every test
+		// point inside it, so the projection/filtering logic actually
+		// gets exercised instead of legitimately discarding everything.
+		Parcours test_parcours;
+		test_parcours.ajouterPointFin(48.85740f, 2.35380f, 35.f);
+		test_parcours.ajouterPointFin(48.85745f, 2.35390f, 36.f);
+		test_parcours.ajouterPointFin(48.85750f, 2.35400f, 38.f);
+		test_parcours.ajouterPointFin(48.85755f, 2.35410f, 40.f);
+
+		// A separate, real 4-point Segment (longueur() must be >= 4 or
+		// afficheSegment() bails early logging an error -- the earlier
+		// `seg` test above only has 3 points, on purpose, for its own
+		// isValid() check, so this is a dedicated one, not a reuse). Same
+		// tight real-scale spacing as test_parcours above, same reason.
+		// Real bug found running this test the first time: using
+		// ajouterPointDebutIso() for the first point (matching the
+		// *other* segment test's own style) left this segment at only 3
+		// points instead of 4, tripping afficheSegment()'s own
+		// longueur()<4 guard ("Segment ... not loaded properly") and
+		// silently drawing nothing -- traced to ajouterPointDebutIso()
+		// itself (Segment.cpp): it calls ajouteDebut() then immediately
+		// removeLast(), which nets to a NO-OP on the list when (as here)
+		// it's the very first point added, since "last" and "first" are
+		// the same single element at that point. Using plain
+		// ajouterPointFin() for all four points sidesteps it.
+		Segment test_prc_seg("prc_test_segment");
+		test_prc_seg.init();
+		test_prc_seg.ajouterPointFin(48.85740f, 2.35380f, 35.f, 0.f);
+		test_prc_seg.ajouterPointFin(48.85745f, 2.35390f, 36.f, 10.f);
+		test_prc_seg.ajouterPointFin(48.85750f, 2.35400f, 38.f, 20.f);
+		test_prc_seg.ajouterPointFin(48.85755f, 2.35410f, 40.f, 30.f);
+
+		// Put "our position" inside both test tracks' own coordinate
+		// span, matching how a real ride would have att.loc sit near the
+		// route it's displaying.
+		att.loc.lat = 48.85748f;
+		att.loc.lon = 2.35395f;
+
+		vue.fillScreen(1);
+		uint32_t before_parcours_pixels = vue.countSetPixels();
+		vue_screens.testAfficheParcours(5, test_parcours.getListePoints());
+		uint32_t after_parcours_pixels = vue.countSetPixels();
+		printf("VuePRC: afficheParcours() pixels %u -> %u %s\n", before_parcours_pixels,
+		       after_parcours_pixels,
+		       after_parcours_pixels < before_parcours_pixels ? "drew something"
+									: "BUG: nothing drawn");
+
+		vue.fillScreen(1);
+		uint32_t before_seg_pixels = vue.countSetPixels();
+		vue_screens.testAfficheSegment(5, &test_prc_seg);
+		uint32_t after_seg_pixels = vue.countSetPixels();
+		printf("VuePRC: afficheSegment() pixels %u -> %u %s\n", before_seg_pixels,
+		       after_seg_pixels,
+		       after_seg_pixels < before_seg_pixels ? "drew something" : "BUG: nothing drawn");
+
+		vue.fillScreen(1);
+		uint32_t before_loading_pixels = vue.countSetPixels();
+		vue_screens.displayLoading();
+		uint32_t after_loading_pixels = vue.countSetPixels();
+		printf("VuePRC: displayLoading() pixels %u -> %u %s\n", before_loading_pixels,
+		       after_loading_pixels,
+		       after_loading_pixels < before_loading_pixels ? "drew something"
+								      : "BUG: nothing drawn");
+
+		uint8_t zoom_before = vue_screens.testGetZoomLevel();
+		vue_screens.propagateEventsPRC(eButtonsEventRight); // increaseZoom()
+		uint8_t zoom_after_inc = vue_screens.testGetZoomLevel();
+		vue_screens.propagateEventsPRC(eButtonsEventLeft); // decreaseZoom()
+		uint8_t zoom_after_dec = vue_screens.testGetZoomLevel();
+		bool zoom_ok = (zoom_after_inc != zoom_before) && (zoom_after_dec == zoom_before);
+		printf("VuePRC: propagateEventsPRC() zoom %u -> Right -> %u -> Left -> %u %s\n",
+		       zoom_before, zoom_after_inc, zoom_after_dec, zoom_ok ? "MATCH" : "MISMATCH");
+
+		// tasksPRC() itself: m_prc_screen_mode starts at eVuePRCScreenInit
+		// (the constructor's own default), but -- per VuePRC.cpp's own
+		// top-of-file note -- the very first call always overwrites it to
+		// eVuePRCScreenDataFull *before* the switch below reads it (the
+		// original's own pre-existing logic, not a porting artifact: the
+		// `eVuePRCScreenInit != m_prc_screen_mode && ...` guard is false
+		// on the first call precisely because the mode is still Init at
+		// that point, so the else branch always fires). With p_parcours
+		// forced nullptr, this exercises the "No PRC in memory" path plus
+		// the always-drawn Avg/SOC cadran() calls below it.
+		vue.fillScreen(1);
+		uint32_t before_prc_pixels = vue.countSetPixels();
+		eVuePRCScreenModes prc_mode = vue_screens.tasksPRC();
+		uint32_t after_prc_pixels = vue.countSetPixels();
+		bool prc_ok = (prc_mode == eVuePRCScreenDataFull) && (after_prc_pixels < before_prc_pixels);
+		printf("VuePRC: tasksPRC() first call -> mode=%d (expect %d/DataFull), pixels %u -> %u "
+		       "%s\n",
+		       (int)prc_mode, (int)eVuePRCScreenDataFull, before_prc_pixels, after_prc_pixels,
+		       prc_ok ? "MATCH" : "MISMATCH");
 	}
 
 	// --- notifications.c: port of stravaV10's WS2812 status-LED animation
