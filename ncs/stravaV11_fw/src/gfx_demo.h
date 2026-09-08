@@ -29,6 +29,19 @@ void gfx_demo_show_sensors(uint8_t bpm, uint16_t rr_ms, bool hrm_paired, uint32_
 uint32_t gfx_demo_show_map(const uint8_t *tile_buf, size_t tile_len, float center_lat,
 			    float center_lon);
 
+/* GFX port Phase D (display arbitration): pushes an already-rendered
+ * buffer (ZEPHYR_GFX_WIDTH x ZEPHYR_GFX_HEIGHT, ZephyrGFX's own layout --
+ * see that class's header) to the real display, reusing the same device
+ * handle/readiness check as gfx_demo()/gfx_demo_show_sensors()/
+ * gfx_demo_show_map() above. For a caller that owns its own
+ * ZephyrGFX-compatible buffer directly (vue_demo.cpp's `vue`, which
+ * inherits ZephyrGFX) rather than drawing into this file's own private
+ * `gfx` object. Returns false if the display device isn't ready (nothing
+ * pushed); true means display_write() was attempted -- check the log for
+ * its actual return code, same error-tolerant convention as every other
+ * function in this file. */
+bool gfx_demo_push_buffer(const uint8_t *buf, size_t buf_size);
+
 #ifdef __cplusplus
 }
 #endif

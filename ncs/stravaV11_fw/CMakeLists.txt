@@ -92,6 +92,7 @@ target_sources(app PRIVATE
   src/settings_demo.cpp
   src/model_glue.c
   src/vue_globals.cpp
+  src/vue_demo.cpp
   lib/source/vue/MenuObjects.cpp
   lib/source/vue/Menuable.cpp
   lib/source/vue/Screenutils.cpp

@@ -46,6 +46,7 @@
 #include "map_demo.h"
 #include "Locator.h"
 #include "sensor_screen_demo.h"
+#include "vue_demo.h"
 #include "task_demo.h"
 #include "power_demo.h"
 #include "poll_demo.h"
@@ -701,6 +702,17 @@ int main(void)
 	gfx_demo();
 	uart_demo(); /* also calls gps_demo_init() -- Locator needs this regardless
 		      * of whether real NMEA bytes or gps_sim's injection feeds it. */
+
+	/* GFX port Phase D (display arbitration): vue_demo_start() is what now
+	 * owns the live display after gfx_demo()'s one-shot boot splash above
+	 * -- see vue_demo.cpp's own top-of-file note for why (in short:
+	 * sensor_screen_demo_start() was never actually being called from
+	 * here at all, and VueDebug is the one Vue screen mode already wired
+	 * to real, live data). sensor_screen_demo_start() itself is
+	 * deliberately left uncalled, not deleted -- its gfx_demo_show_sensors()
+	 * screen is still real, working code, just superseded as this port's
+	 * live-display owner. */
+	vue_demo_start();
 	ant_demo_start();
 	hrm_demo_start();
 	bsc_demo_start();

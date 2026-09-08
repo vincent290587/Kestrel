@@ -54,18 +54,28 @@ static bool gfx_ready(void)
 	return device_is_ready(disp);
 }
 
-static void gfx_push(void)
+/* Shared by every push in this file -- gfx_push() (this file's own `gfx`
+ * object) and the public gfx_demo_push_buffer() (for an external caller's
+ * own buffer, e.g. vue_demo.cpp's `vue`) both funnel through this one
+ * display_write() call. */
+static void gfx_push_buffer(const uint8_t *buf, size_t buf_size)
 {
 	struct display_buffer_descriptor desc = {
-		.buf_size = gfx.getBufferSize(),
+		.buf_size = buf_size,
 		.width = ZEPHYR_GFX_WIDTH,
 		.height = ZEPHYR_GFX_HEIGHT,
 		.pitch = ZEPHYR_GFX_WIDTH,
 	};
 
-	int err = display_write(disp, 0, 0, &desc, gfx.getBuffer());
+	int err = display_write(disp, 0, 0, &desc, buf);
 
-	printk("gfx_demo: %u pixels set, display_write() -> %d\n", gfx.countSetPixels(), err);
+	printk("gfx_demo: display_write() -> %d\n", err);
+}
+
+static void gfx_push(void)
+{
+	printk("gfx_demo: %u pixels set, ", gfx.countSetPixels());
+	gfx_push_buffer(gfx.getBuffer(), gfx.getBufferSize());
 }
 
 static void gfx_print_centered(char *str, int16_t y, uint8_t size)
@@ -259,5 +269,21 @@ uint32_t gfx_demo_show_map(const uint8_t *tile_buf, size_t tile_len, float cente
 	ARG_UNUSED(center_lat);
 	ARG_UNUSED(center_lon);
 	return 0;
+#endif
+}
+
+bool gfx_demo_push_buffer(const uint8_t *buf, size_t buf_size)
+{
+#if DT_HAS_CHOSEN(zephyr_display)
+	if (!gfx_ready()) {
+		return false;
+	}
+
+	gfx_push_buffer(buf, buf_size);
+	return true;
+#else
+	ARG_UNUSED(buf);
+	ARG_UNUSED(buf_size);
+	return false;
 #endif
 }
