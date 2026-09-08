@@ -31,6 +31,8 @@
 #include "vue_global.h"
 #include "button.h"
 #include "VueDebug.h"
+#include "VueGPS.h"
+#include "VueFEC.h"
 #include "Org_01.h"
 #include "map_tile.h"
 #include "test_tile_data.h"
@@ -194,30 +196,49 @@ static bool test_zephyrgfx_fast_paths(uint8_t rotation)
 	return all_match;
 }
 
-/* GFX port Phase D: VueDebug::cadran()/cadranH() are pure virtual (meant
- * to be implemented by Vue itself, ported last per the plan's own
- * ordering -- see todo.md). This minimal concrete subclass is a
- * placeholder standing in for that, just enough to prove
- * VueDebug::displayDebug() reaches and calls them with sane arguments --
- * not a preview of the real rendering Vue::cadran()/cadranH() will do. */
-class TestVueDebug : public VueDebug {
+/* GFX port Phase D: cadran()/cadranH()/cadranRR()/Histo()/HistoH() are
+ * pure virtual on VueDebug/VueGPS/VueFEC (meant to be implemented by Vue
+ * itself, ported last per the plan's own ordering -- see todo.md). This
+ * minimal concrete class combines VueDebug+VueGPS+VueFEC (all three
+ * virtually inherit the same Adafruit_GFX base, so this is a real,
+ * if partial, preview of how the eventual Vue class assembles them) and
+ * implements their shared pure virtuals ONCE as placeholders -- just
+ * enough to prove each screen's own tasksXxx()/displayXxx() logic
+ * reaches and calls them with sane arguments, not a preview of the real
+ * rendering Vue::cadran() etc. will do. */
+class TestVueScreens : public VueDebug, public VueGPS, public VueFEC {
 public:
-	// Adafruit_GFX is a *virtual* base of VueDebug, so as the
-	// most-derived class, TestVueDebug (not VueDebug) is responsible for
-	// initializing it directly -- VueDebug's own ": Adafruit_GFX(0, 0)"
-	// initializer is skipped when VueDebug isn't the most-derived class.
-	// Dimensions are irrelevant here (nothing in this test reads
-	// TestVueDebug's own _width/_height; all drawing goes through the
-	// global `vue`).
-	TestVueDebug() : Adafruit_GFX(0, 0)
+	// Adafruit_GFX is a *virtual* base shared by all three, so as the
+	// most-derived class, TestVueScreens (not any one of them) is
+	// responsible for initializing it directly -- each base's own
+	// ": Adafruit_GFX(0, 0)" initializer is skipped once it isn't the
+	// most-derived class. Real bug found the hard way: (0, 0) looked
+	// harmless since drawPixel() forwards to the global `vue`'s buffer
+	// regardless -- but VueFEC::tasksFEC()'s "Connecting" branch calls
+	// `this->setCursor()`/`this->print()` directly (faithful to
+	// stravaV10's original, where `this` and `vue` are the same object
+	// once Vue itself exists), and Adafruit_GFX's own text layout clips
+	// against *this* object's _width/_height before ever reaching
+	// drawPixel() -- with (0, 0), every character was silently clipped,
+	// not actually broken logic. Matching `vue`'s own native (unrotated)
+	// dimensions here keeps this object's cursor/width/height bookkeeping
+	// consistent with the buffer its drawPixel() override actually
+	// writes into.
+	TestVueScreens() : Adafruit_GFX(ZEPHYR_GFX_WIDTH, ZEPHYR_GFX_HEIGHT)
 	{
+		// Same white-on-white bug class as vue's own setTextColor(0) fix
+		// in the menu test above, just on *this* object's own separate
+		// textcolor member (default 1/white) instead of vue's -- found
+		// the same way, by the dimension fix above not being enough on
+		// its own to make VueFEC's this->print() calls visible.
+		this->setTextColor(0);
 	}
 
-	// VueDebug's virtual Adafruit_GFX base leaves drawPixel() pure
-	// virtual too (Vue's own job in the real hierarchy). displayDebug()
-	// never calls it directly (everything goes through the global `vue`
-	// explicitly, matching stravaV10's own code) -- this only exists so
-	// TestVueDebug is concrete enough to instantiate for the test.
+	// The shared virtual Adafruit_GFX base leaves drawPixel() pure
+	// virtual too (Vue's own job in the real hierarchy). None of these
+	// screens call it directly (everything goes through the global
+	// `vue` explicitly, matching stravaV10's own code) -- this only
+	// exists so TestVueScreens is concrete enough to instantiate.
 	void drawPixel(int16_t x, int16_t y, uint16_t color) override
 	{
 		vue.drawPixel(x, y, color);
@@ -237,6 +258,33 @@ public:
 		vue.print(champ);
 		vue.print("=");
 		vue.println(affi);
+	}
+
+	void cadranRR(uint8_t p_lig, uint8_t nb_lig, uint8_t p_col, const char *champ,
+		      RRZone &zone) override
+	{
+		vue.print(champ);
+		vue.println(" (RR zone placeholder)");
+	}
+
+	void Histo(uint8_t p_lig, uint8_t nb_lig, uint8_t p_col,
+		   sVueHistoConfiguration &h_config_) override
+	{
+		vue.println("(Histo placeholder)");
+	}
+
+	void HistoH(uint8_t p_lig, uint8_t nb_lig, sVueHistoConfiguration &h_config_) override
+	{
+		vue.println("(HistoH placeholder)");
+	}
+
+	// tasksFEC() is `protected` on VueFEC (stravaV10's own original --
+	// meant to be called by Vue itself, not external code). A derived
+	// class can call its own base's protected members, so this thin
+	// public forwarder is just for the test below to reach it.
+	eVueFECScreenModes testTasksFEC()
+	{
+		return this->tasksFEC();
 	}
 };
 
@@ -600,14 +648,16 @@ int main(void)
 		       pair_ok ? "MATCH" : "MISMATCH");
 	}
 
-	// --- GFX port Phase D: VueDebug. Its own real dependencies
-	// (locator.displayGPS2(), att.date, mes_segments, the STC3100
-	// current/voltage reading) all resolve; only cadran()/cadranH()
-	// themselves are a placeholder (see TestVueDebug above), since those
-	// belong to Vue, ported last. ---
-	{
-		TestVueDebug debug_screen;
+	// --- GFX port Phase D: VueDebug/VueGPS/VueFEC, sharing one
+	// TestVueScreens instance (see its own comment above). Real
+	// dependencies (locator.displayGPS2(), att.date, mes_segments, the
+	// STC3100 reading, hrm_info/bsc_info/fec_info, zPower/rrZones/
+	// suffer_score/powerVector) all resolve; only cadran()/cadranH()/
+	// cadranRR()/Histo()/HistoH() themselves are placeholders, since
+	// those belong to Vue, ported last. ---
+	TestVueScreens vue_screens;
 
+	{
 		// Deliberately NOT calling locator.init() again here: it's
 		// already been called once above (the earlier local `Locator
 		// locator;` GPS test), and satNumber[]/elevation[]/azimuth[]/
@@ -624,12 +674,66 @@ int main(void)
 		// to call init() on it too.
 		vue.fillScreen(1); // white background, same convention as the menu test
 		uint32_t before_debug_pixels = vue.countSetPixels();
-		debug_screen.displayDebug();
+		vue_screens.displayDebug();
 		uint32_t after_debug_pixels = vue.countSetPixels();
 		printf("VueDebug: displayDebug() pixels %u -> %u %s\n", before_debug_pixels,
 		       after_debug_pixels,
 		       after_debug_pixels < before_debug_pixels ? "drew something"
 								  : "BUG: nothing drawn");
+	}
+
+	{
+		vue.fillScreen(1);
+		uint32_t before_gps_pixels = vue.countSetPixels();
+		vue_screens.displayGPS();
+		uint32_t after_gps_pixels = vue.countSetPixels();
+		printf("VueGPS: displayGPS() pixels %u -> %u %s\n", before_gps_pixels, after_gps_pixels,
+		       after_gps_pixels < before_gps_pixels ? "drew something" : "BUG: nothing drawn");
+	}
+
+	{
+		extern sFecInfo fec_info;
+
+		// First call: fec_info.el_time is still 0 (never set) -> Init
+		// mode's own logic returns immediately without transitioning,
+		// after drawing "Connecting" and queuing a notif via
+		// vue.addNotif() (Phase D's NotifiableDevice addition).
+		vue.fillScreen(1);
+		uint32_t before_init_pixels = vue.countSetPixels();
+		eVueFECScreenModes mode1 = vue_screens.testTasksFEC();
+		uint32_t after_init_pixels = vue.countSetPixels();
+		bool fec_init_ok =
+			(mode1 == eVueFECScreenInit) && (after_init_pixels < before_init_pixels);
+		printf("VueFEC: tasksFEC() while el_time=0 -> mode=%d (expect %d/Init), pixels %u -> "
+		       "%u %s\n",
+		       (int)mode1, (int)eVueFECScreenInit, before_init_pixels, after_init_pixels,
+		       fec_init_ok ? "MATCH" : "MISMATCH");
+
+		// Simulate FEC becoming active (matches "if (fec_info.el_time)"
+		// in the original) -- this call transitions the mode but, per
+		// the original's own logic, returns immediately without drawing
+		// the data screen yet (that happens on the *next* call).
+		fec_info.el_time = 42;
+		eVueFECScreenModes mode2 = vue_screens.testTasksFEC();
+		bool fec_transition_ok = (mode2 == eVueFECScreenDataFull);
+		printf("VueFEC: tasksFEC() after el_time=42 -> mode=%d (expect %d/DataFull) %s\n",
+		       (int)mode2, (int)eVueFECScreenDataFull,
+		       fec_transition_ok ? "MATCH" : "MISMATCH");
+
+		// Third call: now in DataFull mode -- draws the real data screen
+		// (cadranH/cadran/cadranZones/cadranRR/cadranPowerVector).
+		vue.fillScreen(1);
+		uint32_t before_data_pixels = vue.countSetPixels();
+		eVueFECScreenModes mode3 = vue_screens.testTasksFEC();
+		uint32_t after_data_pixels = vue.countSetPixels();
+		bool fec_data_ok =
+			(mode3 == eVueFECScreenDataFull) && (after_data_pixels < before_data_pixels);
+		printf("VueFEC: tasksFEC() DataFull render -> mode=%d (expect %d/DataFull), pixels %u "
+		       "-> %u %s\n",
+		       (int)mode3, (int)eVueFECScreenDataFull, before_data_pixels, after_data_pixels,
+		       fec_data_ok ? "MATCH" : "MISMATCH");
+
+		fec_info.el_time = 0; // leave global state clean for anything running after this
 	}
 
 	// --- notifications.c: port of stravaV10's WS2812 status-LED animation

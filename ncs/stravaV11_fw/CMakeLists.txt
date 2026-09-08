@@ -95,8 +95,14 @@ target_sources(app PRIVATE
   lib/source/vue/Menuable.cpp
   lib/source/vue/Screenutils.cpp
   lib/source/vue/VueDebug.cpp
+  lib/source/vue/VueGPS.cpp
+  lib/source/vue/VueFEC.cpp
   src/menu_content.cpp
   src/debug_screen_data.cpp
+  lib/source/g_structs.c
+  lib/source/model/PowerZone.cpp
+  lib/source/model/RRZone.cpp
+  lib/source/model/SufferScore.cpp
   lib/bt_cp_client.c
   lib/ant_fec.c
   lib/ant_device_manager.c

@@ -7,17 +7,22 @@
 #include "UserSettings.h"
 #include "Points.h"
 #include "ZephyrGFX.h"
+#include "vue_global.h"
 #include "menu_host.h"
 #include "att_global.h"
 #include "Locator.h"
 #include "Segment.h"
+#include "PowerZone.h"
+#include "RRZone.h"
+#include "SufferScore.h"
+#include "g_structs.h"
 
 UserSettings u_settings;
 
-/* GFX port Phase D: the global `vue` MenuObjects.cpp/Menuable.cpp draw
- * into -- see vue_global.h's own comment for why a plain ZephyrGFX
- * instance is sufficient here, not a full Vue-equivalent class yet. */
-ZephyrGFX vue;
+/* GFX port Phase D: the global `vue` MenuObjects.cpp/Menuable.cpp/
+ * VueDebug.cpp/VueGPS.cpp/VueFEC.cpp draw into -- see vue_global.h's own
+ * comment for what VueBase is and why. */
+VueBase vue;
 
 /* GFX port Phase D: the global Menuable instance menu_content.cpp builds
  * the menu tree against -- see menu_host.h's own comment for why this is
@@ -36,6 +41,18 @@ SAtt att;
  * nothing else needs to share it. */
 Locator locator;
 ListeSegments mes_segments;
+
+/* GFX port Phase D: VueFEC.cpp's globals -- zPower/rrZones are the same
+ * PowerZone/RRZone classes already ported (Phase 1) and already
+ * exercised by main.cpp's own smoke test (as local objects there); these
+ * are the real, shared instances a screen would read from. suffer_score/
+ * powerVector likewise. All start at their default-constructed/
+ * zero-initialized state -- honest "no ride data yet" until Boucle*
+ * (not ported) or something else feeds them. */
+PowerZone zPower;
+RRZone rrZones;
+SufferScore suffer_score;
+sPowerVector powerVector;
 
 // Also normally defined in Model.cpp, even though they belong to Points.h's
 // object-count bookkeeping.

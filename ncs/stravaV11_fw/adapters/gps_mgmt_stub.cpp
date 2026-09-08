@@ -21,6 +21,15 @@ bool GPS_MGMT::isFix(void)
 	return false;
 }
 
+/* GFX port Phase D: VueGPS's displayGPS() is the first real caller. Real
+ * EPO (Extended Prediction Orbit) host-aiding update isn't implemented
+ * (startHostAidingEPO() above is a no-op), so there's never one "in
+ * progress" here -- an honest false, not a guess. */
+bool GPS_MGMT::isEPOUpdating(void)
+{
+	return false;
+}
+
 void GPS_MGMT::startHostAidingEPO(sLocationData &loc_data, uint32_t age_)
 {
 	(void)loc_data;
