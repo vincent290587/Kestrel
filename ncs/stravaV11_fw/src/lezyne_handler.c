@@ -116,30 +116,31 @@ static void send_status_packet(void)
 	uint8_t pkt[LEZ_STD_LEN] = { 0 };
 	uint8_t idx = 0;
 
-	/* 2026-09-11: reverted back to this 6-byte layout at the user's own
-	 * request (their original scheme, matching stravaV10's own
-	 * app_packets_handler.c _send_status_packet() byte-for-byte -- that
-	 * legacy source itself has "valueOf8"/"model32"/"ble_speed8" fields
-	 * commented out, i.e. deliberately not sent, not merely an oversight).
-	 * A same-day, now-reverted version of this function instead matched
-	 * the real "GPS Ally" app's own handleStatusPacket() parser exactly
+	/* Re-restored (2026-09-11) to this 9-byte layout, which matches the
+	 * real "GPS Ally" app's own handleStatusPacket() parser exactly
 	 * (decompiled from the real app -- see Lezyne_app.md/
-	 * LezyneCycleComputerDevice.txt at the repo root), which reads this
-	 * payload, after the opcode byte, as: [0]=state/recording code,
-	 * [1]=GPS device model, [2]=unused/skipped, [3]=major_ver,
-	 * [4]=minor_ver, [5]=isNavigating raw, [6]=gps_mode, [7]=ble_speed --
-	 * worth returning to if the phone shows a garbled firmware version/
-	 * model once connected, since this packet is sent from
-	 * lezyne_handler_on_connected() and so can't be what's blocking GPS
-	 * Ally from listing the device during its pre-connection BLE scan
-	 * (that turned out to be isLezyneDevice()'s address-suffix check,
-	 * see ble_demo.c's own top-of-function comment). */
+	 * LezyneCycleComputerDevice.txt at the repo root): after the opcode
+	 * byte, [0]=state/recording code, [1]=GPS device model, [2]=unused/
+	 * skipped, [3]=major_ver, [4]=minor_ver, [5]=isNavigating raw,
+	 * [6]=gps_mode, [7]=ble_speed. A brief detour reverted this to
+	 * stravaV10's own original 6-byte app_packets_handler.c
+	 * _send_status_packet() scheme while chasing the "GPS Ally can't see
+	 * the device" bug, but that packet is only sent post-connection (from
+	 * lezyne_handler_on_connected()) and so was never a candidate for
+	 * that bug regardless of its byte layout -- the real fixes for that
+	 * were isLezyneDevice()'s address-suffix check (ble_demo.c) and the
+	 * real service/LNS UUIDs (this file's sibling lezyne_ble.c). This
+	 * layout is the one that won't garble the firmware version/model once
+	 * a connection is actually established. */
 	pkt[idx++] = RequestPhoneStatus;
-	pkt[idx++] = 0;    /* padding8 */
-	pkt[idx++] = 0x6;  /* major_ver8 */
-	pkt[idx++] = 0xA;  /* minor_ver8 */
-	pkt[idx++] = 0xB;  /* navigating8 */
-	pkt[idx++] = 0x1E; /* gps_mode8 */
+	pkt[idx++] = 0;	       /* state8: 0 -> not recording, GpsNavigationState.Ready */
+	pkt[idx++] = Y12Mega;  /* model8: matches this port's advertised "LE GPS 12" name */
+	pkt[idx++] = 0;	       /* unused8: discarded by the real parser */
+	pkt[idx++] = 0x6;      /* major_ver8 */
+	pkt[idx++] = 0xA;      /* minor_ver8 */
+	pkt[idx++] = 0;	       /* navigating8: 0 -> GpsNavigationState stays Ready, not navigating */
+	pkt[idx++] = 0x1E;     /* gps_mode8 */
+	pkt[idx++] = 0;	       /* ble_speed8 */
 
 	queue_push(pkt, sizeof(pkt));
 }
