@@ -49,7 +49,9 @@
 #include "disk_raw_test.h"
 #include "sd_format.h"
 #include "notifications_demo.h"
+#ifdef ANT_ENABLED
 #include "ant_dm_demo.h"
+#endif
 #include "stc3100_demo.h"
 #include "smp_demo.h"
 #include "ble_demo.h"
@@ -98,6 +100,7 @@ static void handle_command(const char *cmd)
 		notifications_demo_trigger_green();
 	} else if (strcmp(cmd, "LED BLUE") == 0) {
 		notifications_demo_trigger_blue();
+#ifdef ANT_ENABLED
 	} else if (strcmp(cmd, "DM SEARCH HRM") == 0) {
 		ant_dm_demo_search_start(ANT_DM_SENSOR_HRM);
 	} else if (strcmp(cmd, "DM SEARCH BSC") == 0) {
@@ -110,6 +113,7 @@ static void handle_command(const char *cmd)
 		ant_dm_demo_search_validate(atoi(&cmd[8]));
 	} else if (strcmp(cmd, "DM CANCEL") == 0) {
 		ant_dm_demo_search_cancel();
+#endif
 	} else if (strcmp(cmd, "BATT") == 0) {
 		stc3100_demo_log_reading();
 	} else if (strcmp(cmd, "BLE STATUS") == 0) {
@@ -157,8 +161,11 @@ static void handle_command(const char *cmd)
 		LOG_WRN("cmd_console: unknown command \"%s\" (try "
 			"\"STRESS START\", \"STRESS STOP\", \"SIM START\", \"SIM STOP\", \"MAP START\", \"MAP STOP\", "
 			"\"DISK TEST\", \"FRAM TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", "
-			"\"LED BLUE\", \"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", "
-			"\"DM CANCEL\", \"BATT\", \"BLE STATUS\", \"CPS STATUS\", \"SETTINGS DUMP\", "
+			"\"LED BLUE\", "
+#ifdef ANT_ENABLED
+			"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", "
+#endif
+			"\"BATT\", \"BLE STATUS\", \"CPS STATUS\", \"SETTINGS DUMP\", "
 			"\"SETTINGS RESET\", \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\", "
 			"\"RIDE START\", \"RIDE STOP\", or \"LEZ STATUS\")",
 			cmd);
@@ -245,7 +252,10 @@ void cmd_console_start(void)
 	LOG_INF("cmd_console: ready on RTT down channel 0 and USB CDC-ACM -- "
 		"\"STRESS START\", \"STRESS STOP\", \"SIM START\", \"SIM STOP\", \"MAP START\", \"MAP STOP\", "
 		"\"DISK TEST\", \"FRAM TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
-		"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", \"BATT\", "
+#ifdef ANT_ENABLED
+		"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", "
+#endif
+		"\"BATT\", "
 		"\"SETTINGS DUMP\", \"SETTINGS RESET\", \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\", "
 		"\"RIDE START\", \"RIDE STOP\", \"LEZ STATUS\"");
 }

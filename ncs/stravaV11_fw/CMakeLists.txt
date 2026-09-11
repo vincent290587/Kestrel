@@ -8,36 +8,74 @@ list(APPEND BOARD_ROOT ${CMAKE_CURRENT_SOURCE_DIR})
 
 # sdk-ant is a license-gated vendor SDK, not in our west manifest -- see
 # stravaV11_ant/CMakeLists.txt and CLAUDE.md for why ZEPHYR_EXTRA_MODULES
-# rather than a manifest import.
+# rather than a manifest import. Registering the module costs nothing by
+# itself (module Kconfig/CMake glue, not the stack); ANT_ENABLED below is
+# what actually decides whether any of it links in.
 list(APPEND ZEPHYR_EXTRA_MODULES ${CMAKE_CURRENT_SOURCE_DIR}/../ant)
 
-# Real ANT+ license key: sdk-ant reads it as the Kconfig string
-# CONFIG_ANT_LICENSE_KEY (ant/init/ant_init.c's ant_stack_init() call), not
-# from a header define -- so the repo-root ANT_license.h (gitignored,
-# credential-like material -- see .gitignore) can't be #included anywhere
-# to take effect. Instead, extract the key string from it here and hand it
-# to Kconfig via a generated fragment on EXTRA_CONF_FILE, which must be set
-# before find_package(Zephyr) below. If the header is missing, prj.conf's
-# CONFIG_ANT_EVALUATION_KEY=y fallback applies instead -- so a checkout
-# without the user's personal key still builds, just against the public
-# evaluation key.
-set(ant_license_header ${CMAKE_CURRENT_SOURCE_DIR}/../../ANT_license.h)
-if(EXISTS ${ant_license_header})
-  file(READ ${ant_license_header} ant_license_header_contents)
-  string(REGEX MATCH "ANT_LICENSE_KEY[ \t]+\"([^\"]+)\"" _ "${ant_license_header_contents}")
-  if(CMAKE_MATCH_1)
-    set(ant_license_conf ${CMAKE_BINARY_DIR}/ant_license_generated.conf)
-    file(WRITE ${ant_license_conf} "CONFIG_ANT_LICENSE_KEY=\"${CMAKE_MATCH_1}\"\n")
-    set(EXTRA_CONF_FILE ${ant_license_conf})
+# ANT+ feature toggle (2026-09-11): measured (see git log for the exact
+# per-file breakdown) at ~50KB of flash -- sdk-ant's own precompiled stack
+# (modules/ant's libant.a) alone is ~34KB of that, plus this app's
+# ant_demo/hrm_demo/bsc_demo/fec_demo/ant_dm_demo and the ANT+ profile
+# libraries. Real headroom worth making optional the same way
+# STRAVA_SEGMENTS_ENABLED already is below, for exactly the same reason:
+# this board's flash partition margin is thin enough that a single build
+# needing more room (a debug feature, a future Lezyne addition) can need
+# to trade it against ANT+ rather than trim core app code. Defaults OFF
+# -- this does NOT reverse CLAUDE.md's project-wide "ANT+ is kept, not
+# dropped for BLE-only" decision, which is about the project's shipped
+# firmware; this is a per-build toggle for when flash headroom matters
+# more than having ANT+ in that particular build. Pass -DANT_ENABLED=ON
+# to build ANT+/HRM/BSC/FEC/the ANT+ device-manager back in.
+option(ANT_ENABLED "Compile in ANT+ (ant_demo/hrm_demo/bsc_demo/fec_demo/ant_dm_demo, and sdk-ant's own precompiled stack)" OFF)
+
+if(ANT_ENABLED)
+  # Real ANT+ license key: sdk-ant reads it as the Kconfig string
+  # CONFIG_ANT_LICENSE_KEY (ant/init/ant_init.c's ant_stack_init() call), not
+  # from a header define -- so the repo-root ANT_license.h (gitignored,
+  # credential-like material -- see .gitignore) can't be #included anywhere
+  # to take effect. Instead, extract the key string from it here and hand it
+  # to Kconfig via a generated fragment on EXTRA_CONF_FILE, which must be set
+  # before find_package(Zephyr) below. If the header is missing, this
+  # fragment's own CONFIG_ANT_EVALUATION_KEY=y fallback applies instead --
+  # so a checkout without the user's personal key still builds ANT+ in,
+  # just against the public evaluation key. CONFIG_ANT itself (and its
+  # HRM/BSC/KEY_MANAGER/SEARCH_CONFIG/CHANNEL_CONFIG dependents, formerly
+  # plain prj.conf lines) lives in this same generated fragment now, since
+  # they only make sense to set at all when ANT_ENABLED.
+  set(ant_kconfig_conf ${CMAKE_BINARY_DIR}/ant_enabled_generated.conf)
+  file(WRITE ${ant_kconfig_conf}
+    "CONFIG_ANT=y\n"
+    "CONFIG_ANT_CHANNEL_CONFIG=y\n"
+    "CONFIG_ANT_HRM=y\n"
+    "CONFIG_ANT_BSC=y\n"
+    "CONFIG_ANT_KEY_MANAGER=y\n"
+    "CONFIG_ANT_SEARCH_CONFIG=y\n")
+
+  set(ant_license_header ${CMAKE_CURRENT_SOURCE_DIR}/../../ANT_license.h)
+  if(EXISTS ${ant_license_header})
+    file(READ ${ant_license_header} ant_license_header_contents)
+    string(REGEX MATCH "ANT_LICENSE_KEY[ \t]+\"([^\"]+)\"" _ "${ant_license_header_contents}")
+    if(CMAKE_MATCH_1)
+      file(APPEND ${ant_kconfig_conf} "CONFIG_ANT_LICENSE_KEY=\"${CMAKE_MATCH_1}\"\n")
+    else()
+      message(WARNING "ANT_license.h found but no ANT_LICENSE_KEY \"...\" define in it -- falling back to the ANT_EVALUATION_KEY default")
+      file(APPEND ${ant_kconfig_conf} "CONFIG_ANT_EVALUATION_KEY=y\n")
+    endif()
   else()
-    message(WARNING "ANT_license.h found but no ANT_LICENSE_KEY \"...\" define in it -- falling back to the ANT_EVALUATION_KEY default")
+    message(WARNING "ANT_license.h not found at repo root -- falling back to the ANT_EVALUATION_KEY default (non-commercial use only)")
+    file(APPEND ${ant_kconfig_conf} "CONFIG_ANT_EVALUATION_KEY=y\n")
   endif()
-else()
-  message(WARNING "ANT_license.h not found at repo root -- falling back to the ANT_EVALUATION_KEY default (non-commercial use only)")
+
+  set(EXTRA_CONF_FILE ${ant_kconfig_conf})
 endif()
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(stravav11_fw)
+
+if(ANT_ENABLED)
+  add_definitions(-DANT_ENABLED)
+endif()
 
 # Segments/live-race feature (2026-09-11): live-segment racing was already
 # descoped by user decision (2026-09-07, see CLAUDE.md's port-plan
@@ -94,11 +132,6 @@ target_include_directories(app PRIVATE
 target_sources(app PRIVATE
   src/main.c
   src/ble_demo.c
-  src/ant_demo.c
-  src/hrm_demo.c
-  src/bsc_demo.c
-  src/fec_demo.c
-  src/ant_dm_demo.c
   src/stc3100_demo.c
   src/smp_demo.c
   src/gfx_demo.cpp
@@ -140,7 +173,6 @@ target_sources(app PRIVATE
   lib/source/model/RRZone.cpp
   lib/source/model/SufferScore.cpp
   lib/bt_cp_client.c
-  lib/ant_fec.c
   lib/ant_device_manager.c
   lib/stc3100.c
   lib/source/maps/map_tile.c
@@ -173,4 +205,22 @@ if(STRAVA_SEGMENTS_ENABLED)
     lib/source/routes/Segment.cpp
     lib/source/display/SegmentManager.cpp
   )
+endif()
+
+if(ANT_ENABLED)
+  target_sources(app PRIVATE
+    src/ant_demo.c
+    src/hrm_demo.c
+    src/bsc_demo.c
+    src/fec_demo.c
+    src/ant_dm_demo.c
+    lib/ant_fec.c
+  )
+else()
+  # model_glue.c/ride_recorder.c/menu_content.cpp call into
+  # hrm_demo.h/bsc_demo.h/fec_demo.h/ant_dm_demo.h's API unconditionally
+  # (they're the live-sensor-data bridge, not ANT+-demo-specific code) --
+  # this provides those symbols with real ANT+ compiled out. See its own
+  # top comment.
+  target_sources(app PRIVATE src/ant_stubs.c)
 endif()

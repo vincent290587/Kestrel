@@ -36,11 +36,13 @@
 
 #include "ble_demo.h"
 #include "smp_demo.h"
+#ifdef ANT_ENABLED
 #include "ant_demo.h"
 #include "hrm_demo.h"
 #include "bsc_demo.h"
 #include "fec_demo.h"
 #include "ant_dm_demo.h"
+#endif
 #include "gfx_demo.h"
 #include "gps_demo.h"
 #include "map_demo.h"
@@ -722,11 +724,13 @@ int main(void)
 	 * screen is still real, working code, just superseded as this port's
 	 * live-display owner. */
 	vue_demo_start();
+#ifdef ANT_ENABLED
 	ant_demo_start();
 	hrm_demo_start();
 	bsc_demo_start();
 	fec_demo_start();
 	ant_dm_demo_start();
+#endif
 	ble_demo_start();
 	smp_demo_start(); /* no-op now -- see smp_demo.c's own comment */
 	/* Needs SD (already up, for FIT list/download/delete) and bt_enable()
