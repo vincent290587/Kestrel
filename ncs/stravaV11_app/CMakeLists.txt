@@ -6,9 +6,11 @@ project(stravav11_logic_port)
 # Segments/live-race feature (2026-09-11) -- see stravaV11_fw/CMakeLists.txt's
 # identical option for the full reasoning (that's the app where this
 # actually saves flash; here it's mainly for build-time parity/testing that
-# the OFF path still compiles cleanly). Defaults ON -- identical
-# behavior/build to before this option existed.
-option(STRAVA_SEGMENTS_ENABLED "Compile in the segments/live-race feature (Segment geometry, SegmentManager, VueCRS/VuePRC segment screens)" ON)
+# the OFF path still compiles cleanly). Defaults OFF, matching
+# stravaV11_fw's own default -- this feature is already descoped
+# project-wide. Pass -DSTRAVA_SEGMENTS_ENABLED=ON to build it back in
+# (e.g. to re-exercise its native_sim smoke-test coverage).
+option(STRAVA_SEGMENTS_ENABLED "Compile in the segments/live-race feature (Segment geometry, SegmentManager, VueCRS/VuePRC segment screens)" OFF)
 if(STRAVA_SEGMENTS_ENABLED)
   add_definitions(-DSTRAVA_SEGMENTS_ENABLED)
 endif()

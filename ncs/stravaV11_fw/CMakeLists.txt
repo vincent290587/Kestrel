@@ -52,9 +52,13 @@ project(stravav11_fw)
 # not just dead-code-eliminated already by the linker (VueCRS/VuePRC's
 # segment methods are reachable via `this->afficheSegment(...)` from other
 # member functions of the same class, so --gc-sections can't drop them on
-# its own the way it drops a genuinely uncalled free function). Defaults ON
-# -- identical behavior/build to before this option existed.
-option(STRAVA_SEGMENTS_ENABLED "Compile in the segments/live-race feature (Segment geometry, SegmentManager, VueCRS/VuePRC segment screens)" ON)
+# its own the way it drops a genuinely uncalled free function). Defaults
+# OFF (2026-09-11, changed from an initial ON default the same day) --
+# this feature is already descoped project-wide, and building it out by
+# default is exactly what unblocks the Lezyne feature's flash budget (see
+# CLAUDE.md's own note) without needing every build invocation to
+# remember the flag. Pass -DSTRAVA_SEGMENTS_ENABLED=ON to build it back in.
+option(STRAVA_SEGMENTS_ENABLED "Compile in the segments/live-race feature (Segment geometry, SegmentManager, VueCRS/VuePRC segment screens)" OFF)
 if(STRAVA_SEGMENTS_ENABLED)
   add_definitions(-DSTRAVA_SEGMENTS_ENABLED)
 endif()
