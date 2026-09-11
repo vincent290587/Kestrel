@@ -3,6 +3,16 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(stravav11_logic_port)
 
+# Segments/live-race feature (2026-09-11) -- see stravaV11_fw/CMakeLists.txt's
+# identical option for the full reasoning (that's the app where this
+# actually saves flash; here it's mainly for build-time parity/testing that
+# the OFF path still compiles cleanly). Defaults ON -- identical
+# behavior/build to before this option existed.
+option(STRAVA_SEGMENTS_ENABLED "Compile in the segments/live-race feature (Segment geometry, SegmentManager, VueCRS/VuePRC segment screens)" ON)
+if(STRAVA_SEGMENTS_ENABLED)
+  add_definitions(-DSTRAVA_SEGMENTS_ENABLED)
+endif()
+
 # Reuse stravaV10's existing TDD (host-build) abstraction layer for the
 # wrapper headers (segger_wrapper.h, math_wrapper.h, assert_wrapper.h,
 # task_manager_wrapper.h): they already compile to hardware-free stubs
@@ -53,14 +63,12 @@ target_sources(app PRIVATE
   ${LIB_ROOT}/source/routes/Points.cpp
   ${LIB_ROOT}/source/routes/Vecteur.cpp
   ${LIB_ROOT}/source/routes/ListePoints.cpp
-  ${LIB_ROOT}/source/routes/Segment.cpp
   ${LIB_ROOT}/source/routes/Parcours.cpp
   ${LIB_ROOT}/source/model/PowerZone.cpp
   ${LIB_ROOT}/source/model/RRZone.cpp
   ${LIB_ROOT}/source/model/SufferScore.cpp
   ${LIB_ROOT}/source/model/UserSettings.cpp
   ${LIB_ROOT}/source/model/Locator.cpp
-  ${LIB_ROOT}/source/display/SegmentManager.cpp
   ${LIB_ROOT}/source/display/Zoom.cpp
   ${LIB_ROOT}/source/display/notifications.c
   ${LIB_ROOT}/source/maps/map_tile.c
@@ -96,3 +104,10 @@ target_sources(app PRIVATE
   src/globals.cpp
   src/main.cpp
 )
+
+if(STRAVA_SEGMENTS_ENABLED)
+  target_sources(app PRIVATE
+    ${LIB_ROOT}/source/routes/Segment.cpp
+    ${LIB_ROOT}/source/display/SegmentManager.cpp
+  )
+endif()

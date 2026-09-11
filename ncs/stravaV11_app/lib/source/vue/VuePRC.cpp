@@ -46,7 +46,9 @@
 #include "g_structs.h"
 
 extern Locator locator;
+#if defined(STRAVA_SEGMENTS_ENABLED)
 extern SegmentManager segMngr;
+#endif
 extern sHrmInfo hrm_info;
 extern sBscInfo bsc_info;
 
@@ -107,6 +109,7 @@ eVuePRCScreenModes VuePRC::tasksPRC() {
 			// display parcours
 			this->afficheParcours(5, p_parcours->getListePoints());
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 			// display the segments
 			for (int j=0; j < segMngr.getNbSegs() && j < NB_SEG_ON_DISPLAY - 1; j++) {
 
@@ -114,6 +117,7 @@ eVuePRCScreenModes VuePRC::tasksPRC() {
 
 				this->afficheSegment(5, segMngr.getSeg(j)->p_seg);
 			}
+#endif
 
 		} else {
 			LOG_INFO("No PRC in memory");
@@ -277,6 +281,7 @@ void VuePRC::afficheParcours(uint8_t ligne, ListePoints2D *p_liste) {
 	print("m");
 }
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 /**
  *
  * @param ligne
@@ -425,6 +430,7 @@ void VuePRC::afficheSegment(uint8_t ligne, Segment *p_seg) {
 		print("%");
 	}
 }
+#endif /* STRAVA_SEGMENTS_ENABLED */
 
 void VuePRC::displayLoading() {
 

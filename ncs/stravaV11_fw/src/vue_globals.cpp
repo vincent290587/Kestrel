@@ -29,7 +29,9 @@
 #include "RRZone.h"
 #include "SufferScore.h"
 #include "g_structs.h"
+#if defined(STRAVA_SEGMENTS_ENABLED)
 #include "SegmentManager.h"
+#endif
 #include "Points.h"
 
 Vue vue;
@@ -43,7 +45,9 @@ MenuHost menu;
  * "already proven portable" precedent as everything else in lib/source/.
  * Starts empty (getNbSegs()==0), same "no ride data yet" honesty as
  * zPower/rrZones/suffer_score above. */
+#if defined(STRAVA_SEGMENTS_ENABLED)
 SegmentManager segMngr;
+#endif
 
 /* GFX port Phase D: see att_global.h's own comment -- stays zero-
  * initialized until Attitude (not ported) exists to populate it. */

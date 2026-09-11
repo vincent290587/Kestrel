@@ -39,6 +39,26 @@ endif()
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(stravav11_fw)
 
+# Segments/live-race feature (2026-09-11): live-segment racing was already
+# descoped by user decision (2026-09-07, see CLAUDE.md's port-plan
+# paragraph) -- SegmentManager.cpp/segMngr never gets populated with real
+# data anywhere in this port, so its actual runtime behavior is unaffected
+# either way. This option makes that descoping compile-time-real instead of
+# just "not pursued yet": OFF drops Segment.cpp/SegmentManager.cpp entirely
+# and compiles out every segment-drawing method in VueCRS/VuePRC (see
+# STRAVA_SEGMENTS_ENABLED's #ifdef guards there and in vue_globals.cpp) --
+# real flash savings when a build is tight on space (see
+# pm_static_stravav11_nrf52840.yml's own notes on this board's thin margin),
+# not just dead-code-eliminated already by the linker (VueCRS/VuePRC's
+# segment methods are reachable via `this->afficheSegment(...)` from other
+# member functions of the same class, so --gc-sections can't drop them on
+# its own the way it drops a genuinely uncalled free function). Defaults ON
+# -- identical behavior/build to before this option existed.
+option(STRAVA_SEGMENTS_ENABLED "Compile in the segments/live-race feature (Segment geometry, SegmentManager, VueCRS/VuePRC segment screens)" ON)
+if(STRAVA_SEGMENTS_ENABLED)
+  add_definitions(-DSTRAVA_SEGMENTS_ENABLED)
+endif()
+
 # Phase 7: AdafruitGFX/WString reuse the same -DTDD bridge as stravaV11_app
 # (see that app's CMakeLists.txt) -- their #ifndef TDD branches use
 # AVR-only builtins (__isnanf etc.) that don't exist on this toolchain.
@@ -108,9 +128,7 @@ target_sources(app PRIVATE
   lib/source/routes/Points.cpp
   lib/source/routes/Vecteur.cpp
   lib/source/routes/ListePoints.cpp
-  lib/source/routes/Segment.cpp
   lib/source/routes/Parcours.cpp
-  lib/source/display/SegmentManager.cpp
   src/menu_content.cpp
   src/debug_screen_data.cpp
   lib/source/g_structs.c
@@ -144,3 +162,10 @@ target_sources(app PRIVATE
   src/lezyne_ble.c
   src/lezyne_handler.c
 )
+
+if(STRAVA_SEGMENTS_ENABLED)
+  target_sources(app PRIVATE
+    lib/source/routes/Segment.cpp
+    lib/source/display/SegmentManager.cpp
+  )
+endif()

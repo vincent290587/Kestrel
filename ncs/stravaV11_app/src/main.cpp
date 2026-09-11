@@ -17,7 +17,9 @@
 #include <cstdio>
 #include <cstring>
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 #include "Segment.h"
+#endif
 #include "PowerZone.h"
 #include "SufferScore.h"
 #include "order1_filter.h"
@@ -37,7 +39,9 @@
 #include "VueCRS.h"
 #include "Parcours.h"
 #include "att_global.h"
+#if defined(STRAVA_SEGMENTS_ENABLED)
 #include "SegmentManager.h"
+#endif
 #include "Org_01.h"
 #include "map_tile.h"
 #include "test_tile_data.h"
@@ -53,7 +57,9 @@
 #endif
 
 extern UserSettings u_settings;
+#if defined(STRAVA_SEGMENTS_ENABLED)
 extern SegmentManager segMngr;
+#endif
 
 /* Host side of the rv32_emu research spike (see rv32_emu.h): the guest's
  * only way to affect anything outside its own sandboxed memory arena is
@@ -352,6 +358,7 @@ public:
 		this->afficheParcours(ligne, p_liste);
 	}
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 	// VuePRC:: qualification required once VueCRS (below) joins this
 	// hierarchy -- see the class's own top comment on why afficheSegment()
 	// alone is ambiguous without it.
@@ -359,6 +366,7 @@ public:
 	{
 		this->VuePRC::afficheSegment(ligne, p_seg);
 	}
+#endif
 
 	// Zoom's public API (increaseZoom()/decreaseZoom()/getZoomLevel()/...)
 	// becomes `protected` on VuePRC via `protected Zoom` inheritance, so
@@ -370,6 +378,7 @@ public:
 		return this->getZoomLevel();
 	}
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 	// VueCRS's own protected internals -- same thin-forwarder rationale as
 	// every class above. afficheSegment() needs VueCRS:: qualification for
 	// the same reason testAfficheSegment() above needs VuePRC::.
@@ -377,6 +386,7 @@ public:
 	{
 		this->VueCRS::afficheSegment(ligne, p_seg);
 	}
+#endif
 
 	void testCRSAfficheScreen1()
 	{
@@ -393,10 +403,12 @@ public:
 		this->afficheSensors();
 	}
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 	void testCRSPartner(uint8_t ligne, Segment *p_seg)
 	{
 		this->partner(ligne, p_seg);
 	}
+#endif
 
 	// m_crs_screen_mode is `protected`, driven normally by tasksCRS()'s
 	// own locator-freshness check -- which the global `locator` (never
@@ -428,6 +440,7 @@ int main(void)
 	float d = paris.dist(lyon);
 	printf("Paris-Lyon great-circle distance: %.1f m (expect ~%s392 km)\n", (double)d, "~");
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 	// --- Segment: build a tiny 3-point segment and check state machine getters ---
 	Segment seg("test_segment");
 	seg.init();
@@ -435,6 +448,7 @@ int main(void)
 	seg.ajouterPointFin(48.8570f, 2.3530f, 36.f, 10.f);
 	seg.ajouterPointFin(48.8580f, 2.3550f, 38.f, 25.f);
 	printf("Segment '%s' length=%d valid=%d\n", seg.getName(), seg.longueur(), seg.isValid());
+#endif
 
 	// --- PowerZone: bin a few power samples (FTP comes from u_settings, whose
 	// FRAM-backed persistence is stubbed out -- see adapters/fram_stub.c -- so
@@ -890,6 +904,7 @@ int main(void)
 		test_parcours.ajouterPointFin(48.85750f, 2.35400f, 38.f);
 		test_parcours.ajouterPointFin(48.85755f, 2.35410f, 40.f);
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 		// A separate, real 4-point Segment (longueur() must be >= 4 or
 		// afficheSegment() bails early logging an error -- the earlier
 		// `seg` test above only has 3 points, on purpose, for its own
@@ -912,6 +927,7 @@ int main(void)
 		test_prc_seg.ajouterPointFin(48.85745f, 2.35390f, 36.f, 10.f);
 		test_prc_seg.ajouterPointFin(48.85750f, 2.35400f, 38.f, 20.f);
 		test_prc_seg.ajouterPointFin(48.85755f, 2.35410f, 40.f, 30.f);
+#endif
 
 		// Put "our position" inside both test tracks' own coordinate
 		// span, matching how a real ride would have att.loc sit near the
@@ -928,6 +944,7 @@ int main(void)
 		       after_parcours_pixels < before_parcours_pixels ? "drew something"
 									: "BUG: nothing drawn");
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 		vue.fillScreen(1);
 		uint32_t before_seg_pixels = vue.countSetPixels();
 		vue_screens.testAfficheSegment(5, &test_prc_seg);
@@ -935,6 +952,7 @@ int main(void)
 		printf("VuePRC: afficheSegment() pixels %u -> %u %s\n", before_seg_pixels,
 		       after_seg_pixels,
 		       after_seg_pixels < before_seg_pixels ? "drew something" : "BUG: nothing drawn");
+#endif
 
 		vue.fillScreen(1);
 		uint32_t before_loading_pixels = vue.countSetPixels();
@@ -999,6 +1017,7 @@ int main(void)
 		       (int)crs_mode, (int)eVueCRSScreenInit, before_init_pixels, after_init_pixels,
 		       crs_init_ok ? "MATCH" : "MISMATCH");
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 		// afficheScreen1()'s DataFull/DataSS/DataDS branches, forced via
 		// testCRSSetMode() since tasksCRS() alone can't reach them here
 		// (see that forwarder's own comment). Real 4-point Segments, same
@@ -1081,6 +1100,7 @@ int main(void)
 		       after_partner_pixels,
 		       after_partner_pixels < before_partner_pixels ? "drew something"
 								      : "BUG: nothing drawn");
+#endif /* STRAVA_SEGMENTS_ENABLED */
 
 		// afficheScreen2() -- komoot icon lookup + cadranRR(), real
 		// `m_komoot_nav`/`rrZones` globals (both zero-initialized/empty,

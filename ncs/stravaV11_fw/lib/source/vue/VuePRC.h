@@ -18,7 +18,9 @@
 
 #include <Adafruit_GFX.h>
 #include <display/Zoom.h>
+#if defined(STRAVA_SEGMENTS_ENABLED)
 #include <display/SegmentManager.h>
+#endif
 #include <routes/Parcours.h>
 #include <vue/VueGPS.h>
 #include <vue/button.h>
@@ -55,7 +57,9 @@ protected:
 	 * reach eVuePRCScreenDataFull on its own right now -- see
 	 * VuePRC.cpp's own note on why). No change to external behavior:
 	 * still unreachable from outside the VuePRC hierarchy. */
+#if defined(STRAVA_SEGMENTS_ENABLED)
 	void afficheSegment(uint8_t ligne, Segment *p_seg);
+#endif
 	void afficheParcours(uint8_t ligne, ListePoints2D *p_liste);
 
 };

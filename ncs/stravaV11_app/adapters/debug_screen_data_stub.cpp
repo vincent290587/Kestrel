@@ -10,9 +10,11 @@
  */
 
 #include "debug_screen_data.h"
+#if defined(STRAVA_SEGMENTS_ENABLED)
 #include "Segment.h"
 
 extern ListeSegments mes_segments;
+#endif
 
 bool debug_screen_get_stc_current_ma(float *current_ma)
 {
@@ -28,5 +30,9 @@ bool debug_screen_get_stc_voltage_v(float *voltage_v)
 
 uint32_t debug_screen_get_segment_count(void)
 {
+#if defined(STRAVA_SEGMENTS_ENABLED)
 	return (uint32_t)mes_segments.size();
+#else
+	return 0;
+#endif
 }

@@ -11,12 +11,14 @@
 #include "menu_host.h"
 #include "att_global.h"
 #include "Locator.h"
+#if defined(STRAVA_SEGMENTS_ENABLED)
 #include "Segment.h"
+#include "SegmentManager.h"
+#endif
 #include "PowerZone.h"
 #include "RRZone.h"
 #include "SufferScore.h"
 #include "g_structs.h"
-#include "SegmentManager.h"
 
 UserSettings u_settings;
 
@@ -44,6 +46,7 @@ SAtt att;
  * `Locator locator;` in its GPS smoke test, which stays local since
  * nothing else needs to share it. */
 Locator locator;
+#if defined(STRAVA_SEGMENTS_ENABLED)
 ListeSegments mes_segments;
 
 /* GFX port Phase D: VuePRC.cpp's global -- the same SegmentManager class
@@ -52,6 +55,7 @@ ListeSegments mes_segments;
  * yet" honesty as zPower/rrZones/suffer_score above -- nothing loads real
  * segments into it yet. */
 SegmentManager segMngr;
+#endif
 
 /* GFX port Phase D: VueFEC.cpp's globals -- zPower/rrZones are the same
  * PowerZone/RRZone classes already ported (Phase 1) and already

@@ -13,6 +13,13 @@
  * VueGPS, button.h's eButtonsEvent) is already ported and reachable via
  * the same include paths every other Vue* header in this port already
  * uses.
+ *
+ * 2026-09-11: partner()/afficheSegment() (the actual segment-drawing
+ * methods) and the SegmentManager.h include they need are now gated
+ * behind STRAVA_SEGMENTS_ENABLED -- see CMakeLists.txt's option of the
+ * same name for why. afficheScreen1() itself stays unconditional (it also
+ * draws the always-relevant sensor cadrans), just with its segMngr-driven
+ * DataSS/DataDS branches compiled out when disabled -- see VueCRS.cpp.
  */
 
 #ifndef SOURCE_VUE_VUECRS_H_
@@ -20,7 +27,9 @@
 
 #include "parameters.h"
 #include "RRZone.h"
+#if defined(STRAVA_SEGMENTS_ENABLED)
 #include <display/SegmentManager.h>
+#endif
 #include <Adafruit_GFX.h>
 #include <vue/VueGPS.h>
 #include <vue/VueCommon.h>
@@ -56,7 +65,9 @@ public:
 	bool propagateEventsCRS(eButtonsEvent event);
 
 protected:
+#if defined(STRAVA_SEGMENTS_ENABLED)
 	void partner(uint8_t ligne, Segment *p_seg);
+#endif
 
 	eVueCRSScreenModes m_crs_screen_mode;
 
@@ -68,7 +79,9 @@ protected:
 	 * segMngr to actually hold segments to reach eVueCRSScreenDataSS/DS
 	 * at all). No change to external behavior: still unreachable from
 	 * outside the VueCRS hierarchy. */
+#if defined(STRAVA_SEGMENTS_ENABLED)
 	void afficheSegment(uint8_t ligne, Segment *p_seg);
+#endif
 	void afficheScreen1(void);
 	void afficheScreen2(void);
 	void afficheSensors(void);

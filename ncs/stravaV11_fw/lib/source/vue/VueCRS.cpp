@@ -60,7 +60,9 @@
 #include "komoot_nav.h"
 
 extern Locator locator;
+#if defined(STRAVA_SEGMENTS_ENABLED)
 extern SegmentManager segMngr;
+#endif
 extern sHrmInfo hrm_info;
 extern sBscInfo bsc_info;
 extern sKomootNavigation m_komoot_nav;
@@ -148,6 +150,7 @@ bool VueCRS::propagateEventsCRS(eButtonsEvent event) {
 
 void VueCRS::afficheScreen1(void) {
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 	if (m_crs_screen_mode != eVueCRSScreenInit) {
 		switch (segMngr.getNbSegs()) {
 		case 0:
@@ -165,6 +168,15 @@ void VueCRS::afficheScreen1(void) {
 	}
 
 	LOG_INFO("Displaying %u segments", segMngr.getNbSegs());
+#else
+	/* Segments disabled: there's no segMngr to consult, so this screen is
+	 * always the DataFull layout below -- see this file's own note on
+	 * afficheScreen1() at the top for why that's fine (segMngr never
+	 * actually gets real data in this port regardless of this flag). */
+	if (m_crs_screen_mode != eVueCRSScreenInit) {
+		m_crs_screen_mode = eVueCRSScreenDataFull;
+	}
+#endif
 
 	switch (m_crs_screen_mode) {
 	case eVueCRSScreenDataFull:
@@ -200,6 +212,7 @@ void VueCRS::afficheScreen1(void) {
 
 	}  break;
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 	case eVueCRSScreenDataSS:
 	{
 		this->cadran(1, VUE_CRS_NB_LINES, 1, "Dist", _fmkstr(att.dist / 1000, 1U), "km");
@@ -287,6 +300,7 @@ void VueCRS::afficheScreen1(void) {
 		}
 
 	}  break;
+#endif /* STRAVA_SEGMENTS_ENABLED */
 
 	default:
 		break;
@@ -335,6 +349,7 @@ void VueCRS::afficheSensors(void) {
 }
 
 
+#if defined(STRAVA_SEGMENTS_ENABLED)
 void VueCRS::afficheSegment(uint8_t ligne, Segment *p_seg) {
 
 	float minLat = 100.;
@@ -597,3 +612,4 @@ void VueCRS::partner(uint8_t ligne, Segment *p_seg) {
 	drawFastVLine(_width / 2, hl - 12, 12, 0);
 
 }
+#endif /* STRAVA_SEGMENTS_ENABLED */
