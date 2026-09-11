@@ -256,6 +256,16 @@ static void handle_file_list(void)
 	}
 
 	LOG_INF("lezyne_handler: listing %u FIT file(s)", (unsigned)ctx.count);
+	/* WRN, not INF, so this survives this module's LOG_LEVEL_WRN (see this
+	 * file's own top comment) -- added 2026-09-11 to inspect real file_id
+	 * values from a real GPS Ally session after it reported implausible
+	 * dates (2046, 1963) for some listed files: file_id is a raw Unix
+	 * timestamp (ride_recorder.c's own fs_open() naming), so a bogus one
+	 * points at a bad start_timestamp when that particular ride began
+	 * recording, not a bug in this listing code itself. */
+	for (size_t i = 0; i < ctx.count; i++) {
+		LOG_WRN("lezyne_handler: FIT file_id=0x%08X", (unsigned)ctx.ids[i]);
+	}
 
 	/* pkt[0]=cmd, pkt[1]=count-in-this-packet(u8), pkt[2..]=file_id(u32 LE)*count
 	 * -- matches sd_functions__query_fit_list()'s own layout exactly:
