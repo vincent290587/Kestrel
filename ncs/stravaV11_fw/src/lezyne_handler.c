@@ -79,6 +79,43 @@ static K_WORK_DELAYABLE_DEFINE(lez_tick_work, lez_tick_handler);
 
 #define LEZ_TICK_PERIOD_MS 50
 
+/* 2026-09-11: RX commands from the phone (lezyne_handler_on_rx(), called
+ * directly from lezyne_ble.c's GATT write callback) used to be processed
+ * synchronously right there, in the Bluetooth host's own RX thread
+ * (CONFIG_BT_RX_STACK_SIZE) -- including handle_file_list()/
+ * handle_file_download_start()/handle_file_delete()'s FatFS/SD work. That
+ * caused a real stack overflow on real hardware the first time GPS Ally
+ * requested a file list (fixed same-day by bumping CONFIG_BT_RX_STACK_SIZE
+ * to 4096), and a second real-hardware session afterward still showed
+ * symptoms consistent with a stack overflow elsewhere in the system
+ * (spurious usbd_ch9 control-transfer log lines and an unrelated
+ * central-role BLE disconnect, both appearing right after a Lezyne SD
+ * operation, with no real USB host action to explain them) -- 4096 bytes
+ * being "enough" was never verified against the true worst case (FatFS
+ * directory/file traversal plus the SD/SPI driver's own stack use is hard
+ * to bound precisely), and any thread whose stack is shared with other
+ * critical subsystems (here, all Bluetooth host event callbacks,
+ * central-role scanning included) is the wrong place to gamble on that.
+ *
+ * Real fix: RX commands are now just copied into this queue by the BT RX
+ * thread (cheap, bounded, no FatFS involved) and processed on a dedicated
+ * thread with its own stack, sized generously and blast-radius-limited to
+ * this file alone -- a bug here can no longer take down anything else.
+ * CONFIG_BT_RX_STACK_SIZE could safely go back to its Zephyr default now,
+ * but is left bumped as a second line of defense (see prj.conf). */
+#define LEZ_CMD_STACK_SIZE 4096
+#define LEZ_CMD_THREAD_PRIO 10
+#define LEZ_CMD_MSGQ_DEPTH 4
+
+struct lez_rx_msg {
+	uint8_t data[LEZ_STD_LEN];
+	uint16_t len;
+};
+
+K_MSGQ_DEFINE(lez_rx_msgq, sizeof(struct lez_rx_msg), LEZ_CMD_MSGQ_DEPTH, 4);
+static K_THREAD_STACK_DEFINE(lez_cmd_stack, LEZ_CMD_STACK_SIZE);
+static struct k_thread lez_cmd_thread_data;
+
 static bool queue_push(const uint8_t *data, uint16_t len)
 {
 	if (m_queue_count >= LEZ_QUEUE_DEPTH || len > LEZ_QUEUE_ITEM_MAX) {
@@ -508,36 +545,8 @@ static void lez_tick_handler(struct k_work *work)
 	k_work_schedule(&lez_tick_work, K_MSEC(LEZ_TICK_PERIOD_MS));
 }
 
-void lezyne_handler_init(void)
+static void process_rx_command(const uint8_t *data, uint16_t length)
 {
-	k_work_schedule(&lez_tick_work, K_MSEC(LEZ_TICK_PERIOD_MS));
-}
-
-void lezyne_handler_on_connected(void)
-{
-	m_connected = true;
-	queue_reset();
-	fit_download_abort();
-
-	send_cmd_only(ConnectedInLowSpeed);
-	send_status_packet();
-
-	LOG_INF("lezyne_handler: connected, status queued");
-}
-
-void lezyne_handler_on_disconnected(void)
-{
-	m_connected = false;
-	fit_download_abort();
-	queue_reset();
-}
-
-void lezyne_handler_on_rx(const uint8_t *data, uint16_t length)
-{
-	if (length == 0) {
-		return;
-	}
-
 	uint8_t cmd = data[0];
 
 	switch (cmd) {
@@ -586,6 +595,69 @@ void lezyne_handler_on_rx(const uint8_t *data, uint16_t length)
 	default:
 		LOG_INF("lezyne_handler: unhandled cmd=%u len=%u", cmd, length);
 		break;
+	}
+}
+
+static void lez_cmd_thread_fn(void *p1, void *p2, void *p3)
+{
+	ARG_UNUSED(p1);
+	ARG_UNUSED(p2);
+	ARG_UNUSED(p3);
+
+	struct lez_rx_msg msg;
+
+	while (1) {
+		k_msgq_get(&lez_rx_msgq, &msg, K_FOREVER);
+		process_rx_command(msg.data, msg.len);
+	}
+}
+
+void lezyne_handler_init(void)
+{
+	k_work_schedule(&lez_tick_work, K_MSEC(LEZ_TICK_PERIOD_MS));
+
+	k_thread_create(&lez_cmd_thread_data, lez_cmd_stack, K_THREAD_STACK_SIZEOF(lez_cmd_stack),
+			lez_cmd_thread_fn, NULL, NULL, NULL, LEZ_CMD_THREAD_PRIO, 0, K_NO_WAIT);
+	k_thread_name_set(&lez_cmd_thread_data, "lez_cmd");
+}
+
+void lezyne_handler_on_connected(void)
+{
+	m_connected = true;
+	queue_reset();
+	fit_download_abort();
+
+	send_cmd_only(ConnectedInLowSpeed);
+	send_status_packet();
+
+	LOG_INF("lezyne_handler: connected, status queued");
+}
+
+void lezyne_handler_on_disconnected(void)
+{
+	m_connected = false;
+	fit_download_abort();
+	queue_reset();
+}
+
+/* Called directly from lezyne_ble.c's GATT write callback -- the
+ * Bluetooth host's own RX thread context (see this file's
+ * LEZ_CMD_STACK_SIZE comment above for why real command processing must
+ * NOT happen here). Kept to a plain bounded copy + non-blocking queue
+ * put, no FatFS, no unbounded work of any kind. */
+void lezyne_handler_on_rx(const uint8_t *data, uint16_t length)
+{
+	if (length == 0) {
+		return;
+	}
+
+	struct lez_rx_msg msg;
+
+	msg.len = length < sizeof(msg.data) ? length : sizeof(msg.data);
+	memcpy(msg.data, data, msg.len);
+
+	if (k_msgq_put(&lez_rx_msgq, &msg, K_NO_WAIT) != 0) {
+		LOG_WRN("lezyne_handler: command queue full, dropping cmd=%u", data[0]);
 	}
 }
 
