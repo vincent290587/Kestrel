@@ -292,6 +292,47 @@ void ble_demo_start(void)
 {
 	int err;
 
+	/* 2026-09-11: the real "GPS Ally" app's own BluetoothLeService (see
+	 * BluetoothLeService.txt at the repo root, decompiled from the real
+	 * app) doesn't only scan by service UUID -- every scan result also
+	 * has to pass isLezyneDevice(), which is a hardcoded check on the
+	 * peer's BLE address, not anything advertised:
+	 *   return strArrSplit[4].equalsIgnoreCase("37") &&
+	 *          strArrSplit[5].equalsIgnoreCase("B4");
+	 * i.e. the address's last two octets (as Android's colon-separated
+	 * getAddress() splits them) must be 37:B4 -- Lezyne's own real units
+	 * apparently all share that address suffix. Without this, GPS Ally's
+	 * own ScanFilter (setServiceUuid(), matched correctly by this port's
+	 * lezyne_ble.c) still passes the device to onScanResult(), but
+	 * isLezyneDevice() then silently rejects it and GPS Ally shows
+	 * nothing -- exactly the "app can't see the device" symptom seen
+	 * with this board's normal (FICR-derived) random static address, an
+	 * essentially-zero chance of a coincidental 37:B4 suffix.
+	 *
+	 * Forcing that suffix here (kept before bt_enable(), matching the
+	 * documented bt_id_create() pattern in nrf/samples/bluetooth/
+	 * rssi_power_control/peripheral/src/main.c) makes this identity 0's
+	 * only address for as long as the board stays on this firmware --
+	 * the whole device (Lezyne peripheral advertising in lezyne_ble.c
+	 * AND this file's own central-role scanning/connecting) shares one
+	 * BT stack and one default identity, so there's nowhere more
+	 * Lezyne-specific to put this. The other four octets are otherwise
+	 * arbitrary (kept close to this board's own previous FICR-derived
+	 * address purely for continuity); the top two bits of the first
+	 * octet must stay "11" for a legal static random address (0xD0 =
+	 * 0b110100_00 satisfies that). */
+	bt_addr_le_t lezyne_addr;
+
+	err = bt_addr_le_from_str("D0:8F:6A:4A:37:B4", "random", &lezyne_addr);
+	if (err) {
+		LOG_ERR("bt_addr_le_from_str() failed (err %d)", err);
+	} else {
+		err = bt_id_create(&lezyne_addr, NULL);
+		if (err < 0) {
+			LOG_ERR("bt_id_create() failed (err %d)", err);
+		}
+	}
+
 	err = bt_enable(NULL);
 	if (err) {
 		LOG_ERR("bt_enable() failed (err %d)", err);
