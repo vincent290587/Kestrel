@@ -172,6 +172,11 @@ uint16_t lezyne_ble_get_mtu(void)
 
 void lezyne_ble_log_status(void)
 {
-	LOG_INF("lezyne_ble: connected=%d adv_attempts=%u last_adv_err=%d", m_conn != NULL,
+	/* WRN, not INF: this module is registered at LOG_LEVEL_WRN (see the
+	 * top of this file), which compiles LOG_INF out entirely -- found on
+	 * real hardware alongside the identical bug in
+	 * lezyne_handler_log_status(), "LEZ STATUS" was silently printing
+	 * nothing here either despite this function running. */
+	LOG_WRN("lezyne_ble: connected=%d adv_attempts=%u last_adv_err=%d", m_conn != NULL,
 		m_adv_start_attempts, m_last_adv_err);
 }

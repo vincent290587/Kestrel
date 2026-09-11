@@ -453,9 +453,24 @@ static void lez_tick_handler(struct k_work *work)
 		if (err == 0) {
 			m_queue_head = (m_queue_head + 1) % LEZ_QUEUE_DEPTH;
 			m_queue_count--;
-		} else if (err != -ENOMEM && err != -EAGAIN && err != -ENOTCONN) {
+		} else if (err != -ENOMEM && err != -EAGAIN && err != -ENOTCONN &&
+			   err != -EINVAL) {
 			/* A real, non-transient send error -- drop the packet
-			 * rather than retry forever. */
+			 * rather than retry forever. -EINVAL is deliberately
+			 * treated as transient, not fatal: confirmed on real
+			 * hardware (a real BLE central connected and this fired
+			 * immediately) that bt_nus_send()/nrf/subsys/bluetooth/
+			 * services/nus.c returns exactly -EINVAL whenever the
+			 * peer hasn't subscribed to the NUS TX characteristic's
+			 * notifications yet (bt_gatt_is_subscribed() check) --
+			 * completely normal for the first tick or two right
+			 * after connect, since a central's own CCCD write
+			 * generally lands shortly after its GATT discovery
+			 * completes, not before. Retrying the same head-of-queue
+			 * packet costs nothing (the queue doesn't grow unbounded
+			 * from this -- a real disconnect resets it via
+			 * lezyne_handler_on_disconnected()) and lets it send
+			 * cleanly the moment the peer actually subscribes. */
 			LOG_WRN("lezyne_handler: send failed (%d), dropping packet", err);
 			m_queue_head = (m_queue_head + 1) % LEZ_QUEUE_DEPTH;
 			m_queue_count--;
@@ -551,7 +566,13 @@ void lezyne_handler_on_rx(const uint8_t *data, uint16_t length)
 
 void lezyne_handler_log_status(void)
 {
-	LOG_INF("lezyne_handler: connected=%d queue=%u/%u fit_download_active=%d remaining=%u",
+	/* WRN, not INF: this module is registered at LOG_LEVEL_WRN (see this
+	 * file's own top comment), which compiles LOG_INF out entirely --
+	 * found on real hardware, "LEZ STATUS" was silently printing nothing
+	 * at all despite this function running. This is the one call in the
+	 * file that must always be visible, being the whole point of an
+	 * on-demand status command. */
+	LOG_WRN("lezyne_handler: connected=%d queue=%u/%u fit_download_active=%d remaining=%u",
 		m_connected, m_queue_count, LEZ_QUEUE_DEPTH, m_fit_download_active,
 		(unsigned)m_fit_remaining);
 }
