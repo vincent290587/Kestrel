@@ -127,12 +127,30 @@ BT_GATT_SERVICE_DEFINE(lez_lns_svc, BT_GATT_PRIMARY_SERVICE(BT_UUID_LNS),
  * Scan response: device name + SMP service UUID (what an mcumgr/SMP host
  * client filters on) -- split across both because a 128-bit UUID is 18
  * bytes AD-encoded and legacy AD/SD are each capped at 31 bytes;
- * flags(3) + Lezyne(18) = 21 fits primary, name(11) + SMP(18) = 29 fits
- * scan response. Any real GATT client discovers every service the peer
- * exposes regardless of which UUID happened to be advertised, so this
- * split has no functional effect beyond which UUID a scanner's own
- * *filter* can match on before connecting. */
+ * appearance(4) + flags(3) + Lezyne(18) = 25 fits primary, name(11) +
+ * SMP(18) = 29 fits scan response. Any real GATT client discovers every
+ * service the peer exposes regardless of which UUID happened to be
+ * advertised, so this split has no functional effect beyond which UUID a
+ * scanner's own *filter* can match on before connecting.
+ *
+ * The explicit GAP Appearance field (2026-09-11) matches stravaV10's own
+ * rf/app_ble_peripheral.c advertising_init(), which set
+ * init.advdata.include_appearance = true (value BLE_APPEARANCE_UNKNOWN,
+ * i.e. 0x0000 -- same as CONFIG_BT_DEVICE_APPEARANCE's own default, so
+ * this changes only whether the AD structure is present at all, not its
+ * value) -- Zephyr doesn't broadcast this in the AD packets on its own
+ * just because CONFIG_BT_DEVICE_APPEARANCE is set (that only backs the
+ * GAP service's Appearance characteristic, readable post-connection, not
+ * anything advertised pre-connection). Added while chasing a real GPS
+ * Ally "can't see the device" bug, per the user's own suspicion that a
+ * missing advertised "device type" might matter, alongside this same
+ * day's isLezyneDevice() address-suffix fix in ble_demo.c -- unconfirmed
+ * by itself whether GPS Ally's scan actually cares about this field, but
+ * it now matches the legacy firmware's advertising data one field
+ * closer. */
 static const struct bt_data lez_ad[] = {
+	BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, (CONFIG_BT_DEVICE_APPEARANCE >> 0) & 0xff,
+		      (CONFIG_BT_DEVICE_APPEARANCE >> 8) & 0xff),
 	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
 	BT_DATA_BYTES(BT_DATA_UUID128_ALL, LEZYNE_SVC_VAL),
 };
