@@ -10,19 +10,24 @@
  * just the command list.
  *
  * GFX port Phase D (Vue assembly): "SIM START"/"SIM STOP" and their
- * backing gps_sim_demo.c/gps_sim_route.h removed -- assembling the real
- * `Vue` class (Vue.cpp) made the linker actually include the font-
- * rendering/screen-drawing code it had previously eliminated as dead,
- * overflowing this board's flash partition by ~25KB; gps_sim_route.h's
- * embedded 1200-point GPX replay array (~33KB of `static const` data,
- * baked straight into a header) was the single largest deliberately-
- * removable thing in the image, more than covering the overflow on its
- * own. This was always lab-only GPS test tooling (replaying a recorded
- * ride when there's no real sky visibility, per gps_sim_demo.h's own
- * comment) -- real GPS UART reception (uart_demo() in main.c) is
- * unaffected, and map_screen_demo.c's own map-rendering logic already
- * tolerates "no fix yet" as a normal state independent of where a fix
- * would come from, so no other file needed functional changes.
+ * backing gps_sim_demo.c/gps_sim_route.h were removed at the time --
+ * assembling the real `Vue` class (Vue.cpp) made the linker actually
+ * include the font-rendering/screen-drawing code it had previously
+ * eliminated as dead, overflowing this board's flash partition by ~25KB;
+ * gps_sim_route.h's embedded 1200-point GPX replay array (~33KB of
+ * `static const` data, baked straight into a header) was the single
+ * largest deliberately-removable thing in the image, more than covering
+ * the overflow on its own.
+ *
+ * 2026-09-11 (later): "SIM START"/"SIM STOP" are back, backed by a new,
+ * much smaller gps_sim_demo.c -- a procedurally-computed straight-line
+ * track (a few dozen bytes of state: lat/lon/heading/speed/clock), not an
+ * embedded waypoint array, so this doesn't reopen the flash-budget
+ * problem above. Feeds real, checksummed synthetic NMEA (RMC+GGA) through
+ * Locator's own locator_encode_char() -- see gps_sim_demo.h's own comment
+ * for why that's the right entry point (not the position-only
+ * gps_demo_inject_location() shim, which never touches TinyGPS++'s own
+ * date/time fields that "RIDE START"'s own GPS-time-lock guard needs).
  */
 
 #include <stdbool.h>
@@ -54,6 +59,7 @@
 #include "gps_demo.h"
 #include "lezyne_ble.h"
 #include "lezyne_handler.h"
+#include "gps_sim_demo.h"
 #include "cmd_console.h"
 
 LOG_MODULE_REGISTER(cmd_console, LOG_LEVEL_INF);
@@ -74,6 +80,10 @@ static void handle_command(const char *cmd)
 		sd_stress_demo_start();
 	} else if (strcmp(cmd, "STRESS STOP") == 0) {
 		sd_stress_demo_stop();
+	} else if (strcmp(cmd, "SIM START") == 0) {
+		gps_sim_demo_start();
+	} else if (strcmp(cmd, "SIM STOP") == 0) {
+		gps_sim_demo_stop();
 	} else if (strcmp(cmd, "MAP START") == 0) {
 		map_screen_demo_start();
 	} else if (strcmp(cmd, "MAP STOP") == 0) {
@@ -145,7 +155,7 @@ static void handle_command(const char *cmd)
 		lezyne_handler_log_status();
 	} else {
 		LOG_WRN("cmd_console: unknown command \"%s\" (try "
-			"\"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
+			"\"STRESS START\", \"STRESS STOP\", \"SIM START\", \"SIM STOP\", \"MAP START\", \"MAP STOP\", "
 			"\"DISK TEST\", \"FRAM TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", "
 			"\"LED BLUE\", \"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", "
 			"\"DM CANCEL\", \"BATT\", \"BLE STATUS\", \"CPS STATUS\", \"SETTINGS DUMP\", "
@@ -233,7 +243,7 @@ void cmd_console_start(void)
 #endif
 
 	LOG_INF("cmd_console: ready on RTT down channel 0 and USB CDC-ACM -- "
-		"\"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
+		"\"STRESS START\", \"STRESS STOP\", \"SIM START\", \"SIM STOP\", \"MAP START\", \"MAP STOP\", "
 		"\"DISK TEST\", \"FRAM TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
 		"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", \"BATT\", "
 		"\"SETTINGS DUMP\", \"SETTINGS RESET\", \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\", "

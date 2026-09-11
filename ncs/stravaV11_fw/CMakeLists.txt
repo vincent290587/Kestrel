@@ -165,6 +165,7 @@ target_sources(app PRIVATE
   src/ride_recorder.c
   src/lezyne_ble.c
   src/lezyne_handler.c
+  src/gps_sim_demo.c
 )
 
 if(STRAVA_SEGMENTS_ENABLED)

@@ -18,6 +18,12 @@
 // adapters/gps_mgmt_stub.cpp.
 extern GPS_MGMT gps_mgmt;
 
+// Normally declared in Model.h; the one real global Locator instance every
+// app in this port defines (gps_demo.cpp/globals.cpp). Needed here so
+// locator_encode_char() can drive Locator::tasks() itself -- see that
+// function's own comment below for why.
+extern Locator locator;
+
 // Also normally declared in Model.h -- displayGPS2() (GFX port Phase D) is
 // the only method in this file that needs it.
 #include "vue_global.h"
@@ -59,6 +65,29 @@ uint32_t locator_encode_char(char c) {
 
 		if (GPS_SENTENCE_GPRMC == gps.curSentenceType) {
 			m_is_gps_updated = true;
+
+			/* Real bug found via real-hardware ride-recording testing
+			 * (2026-09-11): nothing in stravaV11_fw's own runtime loop
+			 * ever called Locator::tasks() -- it only ever ran lazily,
+			 * as a side effect of getPosition()/getUpdateSource(),
+			 * which gps_demo_get_position()/get_altitude() deliberately
+			 * stopped calling (see gps_demo.cpp's own comment) to avoid
+			 * an earlier single-consumer bug where whichever reader
+			 * called getPosition() first "consumed" the fix and every
+			 * other reader saw eLocationSourceNone. That fix solved the
+			 * multi-reader race but silently broke the only other path
+			 * that had been driving tasks() at all -- so gps_loc never
+			 * advanced past whatever getPosition()/getPosition()-based
+			 * gps_demo_report() happened to process once, at boot.
+			 * Never caught before this, since every real-GPS-indoors
+			 * test up to now only ever produced void/invalid fixes
+			 * anyway (masking that tasks() wasn't running periodically).
+			 * Driving tasks() here -- right when a full RMC sentence
+			 * completes, the one real, natural, event-driven trigger
+			 * point, independent of any particular reader's own poll
+			 * cadence -- fixes this for every reader at once, real GPS
+			 * UART bytes and gps_sim_demo.c's synthetic feed alike. */
+			locator.tasks();
 		}
 
 	}

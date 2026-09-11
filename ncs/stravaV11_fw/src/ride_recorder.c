@@ -231,7 +231,36 @@ static int ride_write_record(uint8_t slot_index, sRideSlotState *st, const FIT_R
 		}
 	}
 
-	int err = flash_write(qspi, ride_slot_offset(slot_index) + cursor, buf, len);
+	/* Real bug found on real hardware (2026-09-11): nrf_qspi_nor_write()
+	 * requires the write address to be 4-byte aligned, and the size to
+	 * be either <=4 or a multiple of 4 (confirmed by reading
+	 * nrf_qspi_nor.c directly, not guessed) -- `cursor` here is a plain
+	 * running byte offset into the record stream, not 4-aligned in
+	 * general, so this call was failing with flash_write() -> -22
+	 * (-EINVAL) on the very first real record ever written (masked
+	 * until now by the separate Locator::tasks() bug above, which meant
+	 * no record had ever actually reached this far before). Fixed by
+	 * widening the physical write to the enclosing 4-byte-aligned
+	 * window: the lead bytes (before `cursor`, if any) and the tail
+	 * bytes (after cursor+len, up to the next 4-byte boundary) are both
+	 * still-erased NOR (0xFF) -- rewriting 0xFF over 0xFF is a no-op on
+	 * NOR flash (a write can only clear bits), and the tail bytes are
+	 * never read back on export (ride_export_slot_to_sd() only ever
+	 * reads up to the logical write_cursor, which still advances by the
+	 * real, unpadded `len`) -- so this doesn't change the FIT byte
+	 * stream's framing at all, only which flash bytes physically get
+	 * touched by this one call. */
+	uint32_t aligned_addr = cursor & ~3u;
+	uint32_t lead_pad = cursor - aligned_addr;
+	uint32_t aligned_len = (lead_pad + len + 3u) & ~3u;
+	uint8_t aligned_buf[sizeof(buf) + 6];
+
+	memset(aligned_buf, 0xFF, lead_pad);
+	memcpy(&aligned_buf[lead_pad], buf, len);
+	memset(&aligned_buf[lead_pad + len], 0xFF, aligned_len - lead_pad - len);
+
+	int err = flash_write(qspi, ride_slot_offset(slot_index) + aligned_addr, aligned_buf,
+			       aligned_len);
 
 	if (err != 0) {
 		LOG_ERR("ride_recorder: flash_write() -> %d", err);
