@@ -373,6 +373,18 @@ bool Locator::getGPSDate(int& iYr, int& iMo, int& iDay, int& iHr) {
 	return (gps.date.isValid() && gps.time.isValid());
 }
 
+bool Locator::getFullDateTime(int& iYr, int& iMo, int& iDay, int& iHr, int& iMin, int& iSec) {
+
+	iYr = gps.date.year();
+	iMo = gps.date.month();
+	iDay = gps.date.day();
+	iHr = gps.time.hour();
+	iMin = gps.time.minute();
+	iSec = gps.time.second();
+
+	return (gps.date.isValid() && gps.time.isValid());
+}
+
 
 /**
  * GFX port Phase D: ported unmodified except dropping the sysview_task_void_

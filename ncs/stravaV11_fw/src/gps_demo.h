@@ -37,6 +37,12 @@ bool gps_demo_get_altitude(float *alt_m);
  * gps_demo_get_altitude(). */
 bool gps_demo_get_position(float *lat, float *lon);
 
+/* Real Unix (1970 epoch) timestamp from the current GPS date/time, for
+ * ride_recorder.c's FIT record timestamps. false + *timestamp untouched
+ * if GPS date/time isn't valid yet (no fix, or a fix with no time lock) --
+ * same convention as every other gps_demo_get_*() getter. */
+bool gps_demo_get_unix_timestamp(uint32_t *timestamp);
+
 #ifdef __cplusplus
 }
 #endif

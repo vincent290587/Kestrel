@@ -50,6 +50,8 @@
 #include "ble_demo.h"
 #include "settings_demo.h"
 #include "fram_test.h"
+#include "ride_recorder.h"
+#include "gps_demo.h"
 #include "cmd_console.h"
 
 LOG_MODULE_REGISTER(cmd_console, LOG_LEVEL_INF);
@@ -120,13 +122,30 @@ static void handle_command(const char *cmd)
 		settings_demo_set_fec((uint16_t)atoi(&cmd[17]));
 	} else if (strncmp(cmd, "SETTINGS SET GLA ", 17) == 0) {
 		settings_demo_set_gla((uint16_t)atoi(&cmd[17]));
+	} else if (strcmp(cmd, "RIDE START") == 0) {
+		uint32_t ts;
+
+		/* No buttons/Boucle yet to drive this from real UI input (see
+		 * ride_recorder.h/CLAUDE.md) -- a console command stands in,
+		 * same precedent as "DM SEARCH"/"SIM START" before it. Refuses
+		 * rather than starting with a bogus timestamp if GPS hasn't
+		 * locked time yet -- the FIT filename and file_id.time_created
+		 * both depend on it. */
+		if (!gps_demo_get_unix_timestamp(&ts)) {
+			LOG_WRN("cmd_console: RIDE START refused, no GPS time lock yet");
+		} else {
+			ride_recorder_start(ts);
+		}
+	} else if (strcmp(cmd, "RIDE STOP") == 0) {
+		ride_recorder_stop();
 	} else {
 		LOG_WRN("cmd_console: unknown command \"%s\" (try "
 			"\"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
 			"\"DISK TEST\", \"FRAM TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", "
 			"\"LED BLUE\", \"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", "
 			"\"DM CANCEL\", \"BATT\", \"BLE STATUS\", \"CPS STATUS\", \"SETTINGS DUMP\", "
-			"\"SETTINGS RESET\", or \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\")",
+			"\"SETTINGS RESET\", \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\", "
+			"\"RIDE START\", or \"RIDE STOP\")",
 			cmd);
 	}
 }
@@ -212,5 +231,6 @@ void cmd_console_start(void)
 		"\"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
 		"\"DISK TEST\", \"FRAM TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
 		"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", \"BATT\", "
-		"\"SETTINGS DUMP\", \"SETTINGS RESET\", \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\"");
+		"\"SETTINGS DUMP\", \"SETTINGS RESET\", \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\", "
+		"\"RIDE START\", \"RIDE STOP\"");
 }

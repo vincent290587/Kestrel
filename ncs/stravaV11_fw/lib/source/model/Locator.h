@@ -110,6 +110,14 @@ public:
 
 	bool getGPSDate(int &iYr, int &iMo, int &iDay, int &iHr);
 
+	// Ride-recording feature (2026-09-11): FIT record timestamps need a
+	// real Unix time, which getGPSDate() above doesn't fully provide
+	// (no minute/second) -- same gps.date/gps.time fields, just the
+	// complete set. The Unix-epoch conversion itself lives in
+	// gps_demo.cpp (Zephyr-specific glue), not here, to keep this
+	// ported file's own change minimal.
+	bool getFullDateTime(int &iYr, int &iMo, int &iDay, int &iHr, int &iMin, int &iSec);
+
 	eLocationSource getDate(SDate& date_);
 	eLocationSource getPosition(SLoc& loc_, SDate& date_);
 

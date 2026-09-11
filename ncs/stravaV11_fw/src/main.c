@@ -56,6 +56,7 @@
 #include "disk_raw_test.h"
 #include "notifications_demo.h"
 #include "settings_demo.h"
+#include "ride_recorder.h"
 
 /*
  * The custom PCB latches its own regulator ON via the STC3100 fuel gauge's
@@ -698,6 +699,13 @@ int main(void)
 	sensor_demo("fxos8700", DEVICE_DT_GET(DT_NODELABEL(fxos8700)));
 	settings_demo_init();
 	storage_demo();
+
+	/* Needs SD (just mounted above, for export) and FRAM (I2C, already up
+	 * since i2c_demo() runs earlier) -- resumes any ride left RECORDING
+	 * across a crash/power loss, and retries export for anything left
+	 * PENDING_EXPORT. See ride_recorder.h for the full design. */
+	ride_recorder_init();
+
 	display_demo();
 	gfx_demo();
 	uart_demo(); /* also calls gps_demo_init() -- Locator needs this regardless
@@ -726,6 +734,7 @@ int main(void)
 	stc3100_demo_start();
 	notifications_demo_start();
 	usb_demo_start();
+	ride_recorder_start_tick();
 
 	/* sd_stress_demo and map_screen_demo both do real, recurring SD-card
 	 * I/O that competes with USB MSC host access (see cmd_console.c) --

@@ -96,6 +96,33 @@ bool gps_demo_get_position(float *lat, float *lon)
 	return true;
 }
 
+/* Howard Hinnant's well-known constant-time civil-date-to-days-since-epoch
+ * algorithm (http://howardhinnant.github.io/date_algorithms.html) -- exact,
+ * no floating point, no loops, handles the full proleptic Gregorian range
+ * this project will ever see. */
+static int64_t days_from_civil(int y, int m, int d)
+{
+	y -= m <= 2;
+	int64_t era = (y >= 0 ? y : y - 399) / 400;
+	unsigned yoe = (unsigned)(y - era * 400);
+	unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+	unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+	return era * 146097 + (int64_t)doe - 719468;
+}
+
+bool gps_demo_get_unix_timestamp(uint32_t *timestamp)
+{
+	int yr, mo, day, hr, min, sec;
+
+	if (!locator.getFullDateTime(yr, mo, day, hr, min, sec)) {
+		return false;
+	}
+
+	*timestamp = (uint32_t)(days_from_civil(yr, mo, day) * 86400
+				 + hr * 3600 + min * 60 + sec);
+	return true;
+}
+
 void gps_demo_report(void)
 {
 	SLoc loc = {};

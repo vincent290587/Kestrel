@@ -62,6 +62,7 @@ target_include_directories(app PRIVATE
   lib/source/parsers
   lib/source/routes
   lib/libraries/komoot
+  lib/libraries/fitLib
   adapters
 )
 
@@ -135,4 +136,8 @@ target_sources(app PRIVATE
   adapters/millis_zephyr.c
   adapters/drv_ws2812.c
   adapters/fram_zephyr.c
+  lib/libraries/fitLib/fit.c
+  lib/libraries/fitLib/fit_crc.c
+  lib/libraries/fitLib/fit_example.c
+  src/ride_recorder.c
 )

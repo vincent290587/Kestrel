@@ -24,30 +24,74 @@
 # BLE/MCUmgr DFU test/confirm/auto-revert cycle, tools/dfu_update.py --
 # both single-slot mode alternatives that were seriously considered and
 # rejected, see git log for that trail): mcuboot's own partition shrinks
-# from 12 sectors/48KB to 11/44KB (its actual build output has only ever
-# used 36-39KB, confirmed via arm-zephyr-eabi-size across several builds
-# this session -- 9-12KB of that 48KB was always unused headroom), and
-# the freed sector goes to mcuboot_primary (123 sectors, +1 over
-# secondary's 122 -- exactly MCUboot's own "optimal" ratio). Verified by
-# hand against swap_move.c's app_max_size() formula before writing this:
-# available_pri = 123*4096 - 8192(trailer+padding) = 495616B,
-# available_sec = 122*4096 - 4096(trailer) = 495616B, both comfortably
-# above the 492411B image with ~3.2KB margin each, and the three
-# partitions below still sum to exactly 0x100000 (the chip's full 1MB).
+# from 12 sectors/48KB (its actual build output has only ever used
+# 36-39KB, confirmed via arm-zephyr-eabi-size across several builds this
+# session -- 9-12KB of that 48KB was always unused headroom).
+#
+# Update 2026-09-11 (ride-recording feature) -- pushed to mcuboot's real
+# minimum, per the user's explicit direction to grow the primary slot
+# rather than trim app code (some code trimming happened anyway --
+# ride_recorder.c's ride_write_mesg() helper, see that file -- but only
+# ~300B worth, nowhere near enough alone).
+#
+# A real arithmetic mistake was made and caught on real hardware on the
+# way here, worth recording: an earlier version of this comment grew
+# mcuboot_primary to 126 sectors while shrinking mcuboot_secondary to
+# 120, reasoning only about primary's own headroom -- but
+# swap_move.c's app_max_size() takes min(available_pri, available_sec),
+# so shrinking secondary that much just made *it* the bottleneck instead
+# (487424B available, less than before). MCUboot's own debug log
+# independently confirms the real optimum is always the balanced point
+# where primary is exactly one sector ahead of secondary ("Optimal says
+# primary has one more than secondary. Always.") -- for a fixed
+# primary+secondary sector budget, any less-balanced split is provably
+# worse, not just non-optimal cosmetically.
+#
+# So: mcuboot down to 9 sectors/36KB -- its real minimum, confirmed via
+# arm-zephyr-eabi-size (35940B used against a 36864B partition, ~924B of
+# slack left, genuinely thin; any future mcuboot Kconfig/feature growth
+# could overflow this and needs re-checking then). The freed sectors go
+# to the balanced 124/123 (primary/secondary) split this budget allows:
+# available_pri = 124*4096 - 8192(trailer+padding) = 499712B,
+# available_sec = 123*4096 - 4096(trailer) = 499712B (equal, as expected
+# at the balanced point) -- this is the mathematically maximum achievable
+# ceiling given mcuboot's real minimum size, no further partition-only
+# headroom exists beyond this without shrinking mcuboot below what it
+# actually needs.
 mcuboot:
   address: 0x0
   region: flash_primary
-  size: 0xB000
+  size: 0x9000
 
 mcuboot_secondary:
-  address: 0x86000
+  address: 0x85000
   region: flash_primary
-  size: 0x7A000
+  size: 0x7B000
 
-external_flash_disk:
+# Real-hardware ride-recording feature (2026-09-11): a plain static entry,
+# no "affiliation: disk" (ride_recorder.c never goes through disk_access,
+# just direct flash_read()/flash_write() against FIXED_PARTITION_OFFSET) --
+# but Partition Manager still needs to know it exists, or it rejects
+# external_flash_disk below with "Statically defined partitions are not
+# packed at start of region 'external_flash'" (PM tries to account for the
+# whole 16MB external_flash region from its own pm_static.yml view, and a
+# static partition starting at a non-zero offset with nothing explaining
+# the gap before it is an error). Address/size here MUST stay in sync with
+# stravav11_nrf52840.dts's ride_storage_partition node, same as this
+# file's own top comment already warns for the disk-affiliation path.
+ride_storage:
   address: 0x0
   region: external_flash
-  size: 0x1000000
+  size: 0xA00000
+
+# Shrunk from the full 16MB (address 0x0, size 0x1000000) to the 6MB
+# remaining after ride_storage above -- address/size here MUST stay in
+# sync with stravav11_nrf52840.dts's EXTERNAL_FLASH_DISK node's own reg
+# range.
+external_flash_disk:
+  address: 0xA00000
+  region: external_flash
+  size: 0x600000
   affiliation: disk
   extra_params:
     disk_name: "NOR"

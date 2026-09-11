@@ -266,18 +266,39 @@ sd_spi: &spi1 {
  * by matching both the label and the reg range to the pm_static.yml
  * partition exactly; the two must be kept in sync by hand since nothing
  * cross-checks them. */
+/* Ride-recording feature (2026-09-11 design, see todo.md/CLAUDE.md): the
+ * chip's first 10MB is carved off as ride_storage_partition, a plain
+ * devicetree fixed-partition with no PM/disk-affiliation involvement at
+ * all -- unlike external_flash_disk below, it's never touched by
+ * disk_access/flashdisk.c, only by ride_recorder.c's own direct
+ * flash_read()/flash_write()/flash_erase() calls (and, at ride-export
+ * time, the nrf_qspi_nor XIP memory-mapped read path already validated
+ * in Phase 11's qspi_xip_demo()) against FIXED_PARTITION_OFFSET/SIZE, so
+ * it needs no matching pm_static.yml entry and no uppercase-token label
+ * -- that constraint (see the comment on EXTERNAL_FLASH_DISK below) is
+ * specific to PM's disk-affiliation scan, which this partition never
+ * goes through. Five 2MB slots inside it (ride_recorder.h's
+ * RIDE_SLOT_SIZE), tracked in C, not as five separate DT nodes -- one
+ * partition, offsets computed the same way qspi_xip_demo() already
+ * computes its own sub-region offset. */
 &mx25r64 {
 	partitions {
 		compatible = "fixed-partitions";
 		#address-cells = <1>;
 		#size-cells = <1>;
 
+		ride_storage_partition: partition@0 {
+			label = "ride_storage";
+			reg = <0x0 0xA00000>;
+		};
+
 		/* Label and reg MUST match pm_static_stravav11_nrf52840.yml's
-		 * external_flash_disk partition (address 0x0, size 0x1000000)
+		 * external_flash_disk partition (address 0xA00000, size
+		 * 0x600000, the remainder after ride_storage_partition above)
 		 * -- see the comment above for why. */
-		EXTERNAL_FLASH_DISK: partition@0 {
+		EXTERNAL_FLASH_DISK: partition@A00000 {
 			label = "external_flash_disk";
-			reg = <0x0 0x1000000>;
+			reg = <0xA00000 0x600000>;
 		};
 	};
 };
