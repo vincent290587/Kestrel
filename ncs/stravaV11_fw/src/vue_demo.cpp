@@ -68,6 +68,18 @@ static void vue_demo_work_handler(struct k_work *work)
 		vue.setRotation(3);
 		vue.setTextWrap(false);
 		vue.setFont(&Org_01);
+		/* Same white-on-white bug class already found and fixed once in
+		 * stravaV11_app's own native_sim test harness (main.cpp's own
+		 * "vue.setTextColor(0)" call) -- Adafruit_GFX defaults
+		 * textcolor/textbgcolor to the same value, so without this,
+		 * every glyph draws in the same color as clearDisplay()'s
+		 * fillScreen(1) background: technically drawn, invisibly so.
+		 * That test-harness call papered over this exact gap for
+		 * native_sim; vue_demo.cpp -- the real production init path
+		 * this port's actual hardware runs -- never had it, which is
+		 * why real glass showed a blank screen while native_sim's own
+		 * DEBUG-mode smoke test correctly reported "drew something". */
+		vue.setTextColor(0);
 		vue.setCurrentMode(eVueGlobalScreenDEBUG);
 		s_vue_ready = true;
 	}
