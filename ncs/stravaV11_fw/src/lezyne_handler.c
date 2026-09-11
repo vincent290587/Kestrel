@@ -116,27 +116,30 @@ static void send_status_packet(void)
 	uint8_t pkt[LEZ_STD_LEN] = { 0 };
 	uint8_t idx = 0;
 
-	/* Byte layout below is NOT what an earlier version of this function
-	 * sent (that version claimed to match stravaV10's own
-	 * app_packets_handler.c _send_status_packet() byte-for-byte, but
-	 * lined up wrong against what the real phone app actually parses --
-	 * see Lezyne_app.md/LezyneCycleComputerDevice.txt at the repo root).
-	 * The real "GPS Ally" app's handleStatusPacket() (decompiled from the
-	 * real Android app) reads this payload, after the opcode byte, as:
-	 * [0]=state/recording code, [1]=GPS device model, [2]=unused/
-	 * skipped, [3]=major_ver, [4]=minor_ver, [5]=isNavigating raw,
-	 * [6]=gps_mode, [7]=ble_speed. Getting this wrong doesn't break the
-	 * connection, but does make the phone display a garbled firmware
-	 * version and device model. */
+	/* 2026-09-11: reverted back to this 6-byte layout at the user's own
+	 * request (their original scheme, matching stravaV10's own
+	 * app_packets_handler.c _send_status_packet() byte-for-byte -- that
+	 * legacy source itself has "valueOf8"/"model32"/"ble_speed8" fields
+	 * commented out, i.e. deliberately not sent, not merely an oversight).
+	 * A same-day, now-reverted version of this function instead matched
+	 * the real "GPS Ally" app's own handleStatusPacket() parser exactly
+	 * (decompiled from the real app -- see Lezyne_app.md/
+	 * LezyneCycleComputerDevice.txt at the repo root), which reads this
+	 * payload, after the opcode byte, as: [0]=state/recording code,
+	 * [1]=GPS device model, [2]=unused/skipped, [3]=major_ver,
+	 * [4]=minor_ver, [5]=isNavigating raw, [6]=gps_mode, [7]=ble_speed --
+	 * worth returning to if the phone shows a garbled firmware version/
+	 * model once connected, since this packet is sent from
+	 * lezyne_handler_on_connected() and so can't be what's blocking GPS
+	 * Ally from listing the device during its pre-connection BLE scan
+	 * (that turned out to be isLezyneDevice()'s address-suffix check,
+	 * see ble_demo.c's own top-of-function comment). */
 	pkt[idx++] = RequestPhoneStatus;
-	pkt[idx++] = 0;		 /* state8: 0 -> not recording, GpsNavigationState.Ready */
-	pkt[idx++] = Y12Mega;	 /* model8: matches this port's advertised "LE GPS 12" name */
-	pkt[idx++] = 0;		 /* unused8: discarded by the real parser */
-	pkt[idx++] = 0x6;	 /* major_ver8 */
-	pkt[idx++] = 0xA;	 /* minor_ver8 */
-	pkt[idx++] = 0;		 /* navigating8: 0 -> GpsNavigationState stays Ready, not navigating */
-	pkt[idx++] = 0x1E;	 /* gps_mode8 */
-	pkt[idx++] = 0;		 /* ble_speed8 */
+	pkt[idx++] = 0;    /* padding8 */
+	pkt[idx++] = 0x6;  /* major_ver8 */
+	pkt[idx++] = 0xA;  /* minor_ver8 */
+	pkt[idx++] = 0xB;  /* navigating8 */
+	pkt[idx++] = 0x1E; /* gps_mode8 */
 
 	queue_push(pkt, sizeof(pkt));
 }
