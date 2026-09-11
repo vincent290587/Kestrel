@@ -116,16 +116,27 @@ static void send_status_packet(void)
 	uint8_t pkt[LEZ_STD_LEN] = { 0 };
 	uint8_t idx = 0;
 
-	/* Matches stravaV10's own app_packets_handler.c _send_status_packet()
-	 * byte-for-byte -- reusing RequestPhoneStatus as the opcode for the
-	 * device's own status announcement is a real quirk of the original
-	 * protocol, not a mistake carried over by accident. */
+	/* Byte layout below is NOT what an earlier version of this function
+	 * sent (that version claimed to match stravaV10's own
+	 * app_packets_handler.c _send_status_packet() byte-for-byte, but
+	 * lined up wrong against what the real phone app actually parses --
+	 * see Lezyne_app.md/LezyneCycleComputerDevice.txt at the repo root).
+	 * The real "GPS Ally" app's handleStatusPacket() (decompiled from the
+	 * real Android app) reads this payload, after the opcode byte, as:
+	 * [0]=state/recording code, [1]=GPS device model, [2]=unused/
+	 * skipped, [3]=major_ver, [4]=minor_ver, [5]=isNavigating raw,
+	 * [6]=gps_mode, [7]=ble_speed. Getting this wrong doesn't break the
+	 * connection, but does make the phone display a garbled firmware
+	 * version and device model. */
 	pkt[idx++] = RequestPhoneStatus;
-	pkt[idx++] = 0;    /* padding8 */
-	pkt[idx++] = 0x6;  /* major_ver8 */
-	pkt[idx++] = 0xA;  /* minor_ver8 */
-	pkt[idx++] = 0xB;  /* navigating8 */
-	pkt[idx++] = 0x1E; /* gps_mode8 */
+	pkt[idx++] = 0;		 /* state8: 0 -> not recording, GpsNavigationState.Ready */
+	pkt[idx++] = Y12Mega;	 /* model8: matches this port's advertised "LE GPS 12" name */
+	pkt[idx++] = 0;		 /* unused8: discarded by the real parser */
+	pkt[idx++] = 0x6;	 /* major_ver8 */
+	pkt[idx++] = 0xA;	 /* minor_ver8 */
+	pkt[idx++] = 0;		 /* navigating8: 0 -> GpsNavigationState stays Ready, not navigating */
+	pkt[idx++] = 0x1E;	 /* gps_mode8 */
+	pkt[idx++] = 0;		 /* ble_speed8 */
 
 	queue_push(pkt, sizeof(pkt));
 }
