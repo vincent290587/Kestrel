@@ -540,8 +540,16 @@ static void lez_tick_handler(struct k_work *work)
 		/* else: transient backpressure, retry same packet next tick. */
 	}
 
-	fit_download_tick();
-
+	/* fit_download_tick() deliberately NOT called from here anymore --
+	 * see lez_cmd_thread_fn()'s own comment: its fs_read() is exactly
+	 * the same "FatFS on a shared thread" hazard LEZ_CMD_STACK_SIZE was
+	 * introduced to eliminate, and this k_work runs on the SYSTEM
+	 * workqueue (CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE), shared with every
+	 * other periodic demo in this firmware -- moving process_rx_command()
+	 * off the Bluetooth RX thread only to leave this on another shared
+	 * thread would have solved nothing. This handler now only drains
+	 * m_queue (plain BLE notify calls, no FatFS), which is what the
+	 * system workqueue's default stack size was always sized for. */
 	k_work_schedule(&lez_tick_work, K_MSEC(LEZ_TICK_PERIOD_MS));
 }
 
@@ -598,6 +606,18 @@ static void process_rx_command(const uint8_t *data, uint16_t length)
 	}
 }
 
+/* Owns BOTH real FatFS/SD entry points now: RX commands (via the msgq,
+ * fed by lezyne_handler_on_rx() from the Bluetooth RX thread) and the
+ * periodic FIT-download chunk read (fit_download_tick(), which used to
+ * run from lez_tick_handler() on the SYSTEM workqueue -- a second
+ * "FatFS on a shared thread" hazard, found on real hardware to
+ * reproduce the same disconnect+spurious-usbd_ch9-log symptom this
+ * file's dedicated thread was introduced to fix, and more often than
+ * the RX-command path since a download does many repeated fs_read()
+ * calls per transfer instead of one opendir/readdir pass). Blocking on
+ * the msgq with a timeout doubles it as this thread's own periodic tick,
+ * so no separate k_work/workqueue is needed for the download side at
+ * all. */
 static void lez_cmd_thread_fn(void *p1, void *p2, void *p3)
 {
 	ARG_UNUSED(p1);
@@ -607,8 +627,13 @@ static void lez_cmd_thread_fn(void *p1, void *p2, void *p3)
 	struct lez_rx_msg msg;
 
 	while (1) {
-		k_msgq_get(&lez_rx_msgq, &msg, K_FOREVER);
-		process_rx_command(msg.data, msg.len);
+		int err = k_msgq_get(&lez_rx_msgq, &msg, K_MSEC(LEZ_TICK_PERIOD_MS));
+
+		if (err == 0) {
+			process_rx_command(msg.data, msg.len);
+		}
+
+		fit_download_tick();
 	}
 }
 
