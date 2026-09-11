@@ -74,6 +74,9 @@ static void vue_demo_work_handler(struct k_work *work)
 
 	vue.refresh();
 
+	printk("vue_demo: %u pixels set, w=%d h=%d rotation=%d\n",
+	       vue.countSetPixels(), vue.width(), vue.height(), vue.getRotation());
+
 	gfx_demo_push_buffer(vue.getBuffer(), vue.getBufferSize());
 
 	k_work_schedule(&vue_demo_work, K_MSEC(VUE_DEMO_REFRESH_MS));

@@ -6,6 +6,44 @@
 #
 # extra_params keys MUST be "disk_"-prefixed -- see
 # pm_static_nrf52840dk_nrf52840.yml's comment for why.
+# Real-hardware validation (custom PCB, 2026-09-11): the default layout
+# (see build_stravav11_fw/partitions.yml before this override) gives
+# mcuboot_secondary a "share_size: [mcuboot_primary]" relationship --
+# secondary is *always* auto-mirrored to primary's own size, both landing
+# at 122 sectors (0x7a000) out of the chip's 256 total internal-flash
+# sectors (mcuboot's own 12 + 122 + 122 = 256 = the full 1MB, zero slack
+# anywhere). That symmetric split is what MCUboot's own swap-move
+# algorithm calls "non-optimal" (its own debug log, confirmed via
+# CONFIG_MCUBOOT_LOG_LEVEL_DBG: "Optimal says primary has one more than
+# secondary. Always.") -- and the signed app image (492411B) is 891 bytes
+# over app_max_size() in this exact symmetric layout, confirmed via the
+# same debug log ("TLV beyond image size").
+#
+# Fixed here with a static, asymmetric layout instead of cutting app
+# features or giving up the secondary slot (and with it Phase 10's whole
+# BLE/MCUmgr DFU test/confirm/auto-revert cycle, tools/dfu_update.py --
+# both single-slot mode alternatives that were seriously considered and
+# rejected, see git log for that trail): mcuboot's own partition shrinks
+# from 12 sectors/48KB to 11/44KB (its actual build output has only ever
+# used 36-39KB, confirmed via arm-zephyr-eabi-size across several builds
+# this session -- 9-12KB of that 48KB was always unused headroom), and
+# the freed sector goes to mcuboot_primary (123 sectors, +1 over
+# secondary's 122 -- exactly MCUboot's own "optimal" ratio). Verified by
+# hand against swap_move.c's app_max_size() formula before writing this:
+# available_pri = 123*4096 - 8192(trailer+padding) = 495616B,
+# available_sec = 122*4096 - 4096(trailer) = 495616B, both comfortably
+# above the 492411B image with ~3.2KB margin each, and the three
+# partitions below still sum to exactly 0x100000 (the chip's full 1MB).
+mcuboot:
+  address: 0x0
+  region: flash_primary
+  size: 0xB000
+
+mcuboot_secondary:
+  address: 0x86000
+  region: flash_primary
+  size: 0x7A000
+
 external_flash_disk:
   address: 0x0
   region: external_flash
