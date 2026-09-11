@@ -63,6 +63,7 @@ target_include_directories(app PRIVATE
   lib/source/routes
   lib/libraries/komoot
   lib/libraries/fitLib
+  lib/lezyne
   adapters
 )
 
@@ -140,4 +141,6 @@ target_sources(app PRIVATE
   lib/libraries/fitLib/fit_crc.c
   lib/libraries/fitLib/fit_example.c
   src/ride_recorder.c
+  src/lezyne_ble.c
+  src/lezyne_handler.c
 )

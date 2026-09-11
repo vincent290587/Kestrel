@@ -57,6 +57,7 @@
 #include "notifications_demo.h"
 #include "settings_demo.h"
 #include "ride_recorder.h"
+#include "lezyne_ble.h"
 
 /*
  * The custom PCB latches its own regulator ON via the STC3100 fuel gauge's
@@ -727,7 +728,12 @@ int main(void)
 	fec_demo_start();
 	ant_dm_demo_start();
 	ble_demo_start();
-	smp_demo_start();
+	smp_demo_start(); /* no-op now -- see smp_demo.c's own comment */
+	/* Needs SD (already up, for FIT list/download/delete) and bt_enable()
+	 * already called by ble_demo_start() above. Owns the device's one
+	 * shared connectable peripheral advertiser (see lezyne_ble.c's own
+	 * top comment for why SMP's own advertising was folded in here). */
+	lezyne_ble_start();
 	task_demo_start();
 	power_demo_start();
 	poll_demo_start();

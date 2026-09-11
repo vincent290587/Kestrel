@@ -52,6 +52,8 @@
 #include "fram_test.h"
 #include "ride_recorder.h"
 #include "gps_demo.h"
+#include "lezyne_ble.h"
+#include "lezyne_handler.h"
 #include "cmd_console.h"
 
 LOG_MODULE_REGISTER(cmd_console, LOG_LEVEL_INF);
@@ -138,6 +140,9 @@ static void handle_command(const char *cmd)
 		}
 	} else if (strcmp(cmd, "RIDE STOP") == 0) {
 		ride_recorder_stop();
+	} else if (strcmp(cmd, "LEZ STATUS") == 0) {
+		lezyne_ble_log_status();
+		lezyne_handler_log_status();
 	} else {
 		LOG_WRN("cmd_console: unknown command \"%s\" (try "
 			"\"STRESS START\", \"STRESS STOP\", \"MAP START\", \"MAP STOP\", "
@@ -145,7 +150,7 @@ static void handle_command(const char *cmd)
 			"\"LED BLUE\", \"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", "
 			"\"DM CANCEL\", \"BATT\", \"BLE STATUS\", \"CPS STATUS\", \"SETTINGS DUMP\", "
 			"\"SETTINGS RESET\", \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\", "
-			"\"RIDE START\", or \"RIDE STOP\")",
+			"\"RIDE START\", \"RIDE STOP\", or \"LEZ STATUS\")",
 			cmd);
 	}
 }
@@ -232,5 +237,5 @@ void cmd_console_start(void)
 		"\"DISK TEST\", \"FRAM TEST\", \"FORMAT SD\", \"LED RED\", \"LED GREEN\", \"LED BLUE\", "
 		"\"DM SEARCH HRM/BSC/FEC\", \"DM LIST\", \"DM PICK <n>\", \"DM CANCEL\", \"BATT\", "
 		"\"SETTINGS DUMP\", \"SETTINGS RESET\", \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\", "
-		"\"RIDE START\", \"RIDE STOP\"");
+		"\"RIDE START\", \"RIDE STOP\", \"LEZ STATUS\"");
 }

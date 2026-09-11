@@ -1,12 +1,11 @@
 #ifndef SMP_DEMO_H_
 #define SMP_DEMO_H_
 
-/* Starts BLE advertising for the MCUmgr/SMP DFU transport (image
- * upload + confirm + reset, driven from a host mcumgr/SMP client) --
- * must run after ble_demo_start() (needs bt_enable() already called).
- * Actual image/os management is handled entirely by CONFIG_MCUMGR_GRP_IMG/
- * CONFIG_MCUMGR_GRP_OS + CONFIG_MCUMGR_TRANSPORT_BT -- this file only
- * owns advertising so the transport is reachable at all. */
+/* No-op as of the Lezyne feature (2026-09-11) -- lezyne_ble.c now owns the
+ * one shared legacy advertiser (whose data includes the SMP service UUID),
+ * see smp_demo.c's own top-of-file comment for why. Kept as a stable call
+ * site in main.c rather than removed, in case a future board wants an
+ * independent SMP-only advertiser again. */
 void smp_demo_start(void);
 
 /* On-demand introspection (cmd_console.c's "BLE STATUS") -- boot-time
