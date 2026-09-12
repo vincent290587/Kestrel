@@ -76,6 +76,11 @@ static bool m_time_init;
 
 static uint16_t m_power_w;
 static int64_t m_power_last_update_ms; /* 0 = never (see fec_demo_get_power_age_ms()) */
+/* cadence_provider.c's own ANT+ source (2026-09-12) -- page 25 carries
+ * both power and cadence in the same message, so this shares
+ * m_power_last_update_ms as its own freshness timestamp rather than
+ * tracking a second, always-identical one. */
+static uint8_t m_cadence_rpm;
 
 static uint8_t m_tx_buf[8]; /* page number + 7-byte payload, per ANT data message size */
 static bool m_tx_pending;
@@ -120,6 +125,7 @@ static void handle_page25(const uint8_t *page_payload)
 
 	ant_fec_page25_decode(page_payload, &page25);
 	m_power_w = page25.inst_power;
+	m_cadence_rpm = page25.inst_cad;
 	m_power_last_update_ms = k_uptime_get();
 
 	LOG_INF("FEC power=%u W cadence=%u status=%u", page25.inst_power, page25.inst_cad,
@@ -289,6 +295,11 @@ int fec_demo_start(void)
 uint16_t fec_demo_get_power_w(void)
 {
 	return m_power_w;
+}
+
+uint8_t fec_demo_get_cadence_rpm(void)
+{
+	return m_cadence_rpm;
 }
 
 uint16_t fec_demo_get_elapsed_time_s(void)

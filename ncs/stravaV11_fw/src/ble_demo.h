@@ -24,4 +24,10 @@ uint32_t ble_demo_get_power_age_ms(void);
 uint8_t ble_demo_get_hr_bpm(void);
 uint32_t ble_demo_get_hr_age_ms(void);
 
+/* Derived from Cycling Power Measurement's cumulative-crank-revolution
+ * delta, not transmitted directly -- see ble_demo.c's own comment. Same
+ * shape/convention as the power/HR getters above. */
+uint8_t ble_demo_get_cadence_rpm(void);
+uint32_t ble_demo_get_cadence_age_ms(void);
+
 #endif /* BLE_DEMO_H_ */

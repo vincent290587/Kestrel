@@ -172,6 +172,7 @@ target_sources(app PRIVATE
   src/lap_screen_data.cpp
   src/power_provider.c
   src/hrm_provider.c
+  src/cadence_provider.c
   lib/source/g_structs.c
   lib/source/model/PowerZone.cpp
   lib/source/model/RRZone.cpp

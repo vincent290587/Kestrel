@@ -28,6 +28,12 @@ bool fec_demo_is_paired(void);
  * hrm_demo_get_age_ms() -- see there. */
 uint32_t fec_demo_get_power_age_ms(void);
 
+/* cadence_provider.c's own ANT+ FE-C source (2026-09-12): a power meter
+ * reports its own instantaneous cadence in the same page-25 message as
+ * power, so fec_demo_get_power_age_ms() is this field's freshness check
+ * too -- there's no separate fec_demo_get_cadence_age_ms(). */
+uint8_t fec_demo_get_cadence_rpm(void);
+
 #ifdef __cplusplus
 }
 #endif

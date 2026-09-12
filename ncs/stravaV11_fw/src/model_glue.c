@@ -6,6 +6,7 @@
 #include "gps_demo.h"
 #include "power_provider.h"
 #include "hrm_provider.h"
+#include "cadence_provider.h"
 
 /* hr_bpm/power_w delegate to hrm_provider.h/power_provider.h (2026-09-12)
  * -- those already do this exact "is it live right now" gating (ANT+ or
@@ -39,12 +40,7 @@ bool model_glue_get_speed_kph(uint32_t *speed_kph)
 
 bool model_glue_get_cadence_rpm(uint32_t *cadence_rpm)
 {
-	if (!bsc_demo_is_paired() || bsc_demo_get_age_ms() >= MODEL_GLUE_STALE_MS) {
-		return false;
-	}
-
-	*cadence_rpm = bsc_demo_get_cadence();
-	return true;
+	return cadence_provider_get_rpm(cadence_rpm);
 }
 
 bool model_glue_get_power_w(uint16_t *power_w)

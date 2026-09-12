@@ -73,6 +73,11 @@ uint32_t fec_demo_get_power_age_ms(void)
 	return UINT32_MAX;
 }
 
+uint8_t fec_demo_get_cadence_rpm(void)
+{
+	return 0;
+}
+
 void ant_dm_demo_search_start(enum ant_dm_sensor_type type)
 {
 	(void)type;

@@ -70,6 +70,74 @@ static uint32_t m_hrs_notif_count;
 static uint8_t m_last_hr_bpm;
 static int64_t m_last_hr_update_ms;
 
+/* cadence_provider.c's own BLE source (2026-09-12): the Cycling Power
+ * Measurement characteristic carries cumulative crank revolutions + a
+ * last-event timestamp (1/1024s resolution) when flags.crank_rev is set
+ * -- cadence itself isn't transmitted directly and has to be derived
+ * from the *delta* between two notifications, same shape (and same
+ * rollover hazard: both the 16-bit revolution count and the 16-bit
+ * event-time wrap) as ANT+ BSC's own crank/wheel revolution counters.
+ * This mirrors bsc_demo.c's calculate_cadence() rollover-accumulation
+ * technique exactly (same CADENCE_COEFFICIENT derivation: event time is
+ * also 1/1024s here, matching BSC_EVT_TIME_FACTOR) rather than sharing
+ * code with it -- bsc_demo.c's version is tied to its own ant_bsc types,
+ * and duplicating ~15 lines of self-contained math was simpler than
+ * extracting a shared utility for one caller. */
+#define BLE_CADENCE_COEFFICIENT (1024 * 60) /* event-time units/s * s/min */
+
+struct ble_cadence_calc {
+	bool is_init;
+	int32_t acc_rev_cnt;
+	int32_t prev_rev_cnt;
+	int32_t prev_acc_rev_cnt;
+	int32_t acc_evt_time;
+	int32_t prev_evt_time;
+	int32_t prev_acc_evt_time;
+};
+
+static struct ble_cadence_calc m_cadence_calc;
+static uint8_t m_cadence_rpm;
+static int64_t m_cadence_update_ms;
+
+static uint8_t ble_calculate_cadence(int32_t rev_cnt, int32_t evt_time)
+{
+	uint32_t computed_cadence = 0;
+
+	if (!m_cadence_calc.is_init) {
+		m_cadence_calc.is_init = true;
+		m_cadence_calc.prev_rev_cnt = rev_cnt;
+		m_cadence_calc.prev_evt_time = evt_time;
+		return 0;
+	}
+
+	if (rev_cnt == m_cadence_calc.prev_rev_cnt) {
+		return m_cadence_rpm;
+	}
+
+	m_cadence_calc.acc_rev_cnt += rev_cnt - m_cadence_calc.prev_rev_cnt;
+	m_cadence_calc.acc_evt_time += evt_time - m_cadence_calc.prev_evt_time;
+
+	if (m_cadence_calc.prev_rev_cnt > rev_cnt) {
+		m_cadence_calc.acc_rev_cnt += UINT16_MAX + 1;
+	}
+	if (m_cadence_calc.prev_evt_time > evt_time) {
+		m_cadence_calc.acc_evt_time += UINT16_MAX + 1;
+	}
+
+	m_cadence_calc.prev_rev_cnt = rev_cnt;
+	m_cadence_calc.prev_evt_time = evt_time;
+
+	computed_cadence = BLE_CADENCE_COEFFICIENT *
+			    (uint32_t)(m_cadence_calc.acc_rev_cnt - m_cadence_calc.prev_acc_rev_cnt) /
+			    (uint32_t)(m_cadence_calc.acc_evt_time - m_cadence_calc.prev_acc_evt_time);
+
+	m_cadence_calc.prev_acc_rev_cnt = m_cadence_calc.acc_rev_cnt;
+	m_cadence_calc.prev_acc_evt_time = m_cadence_calc.acc_evt_time;
+
+	/* Same 200rpm sanity cap as bsc_demo.c's own calculate_cadence(). */
+	return computed_cadence > 200 ? 0 : (uint8_t)computed_cadence;
+}
+
 static void measurement_cb(struct bt_cp_client *cp_c, const struct bt_cp_client_measurement *meas,
 			    int err)
 {
@@ -81,6 +149,11 @@ static void measurement_cb(struct bt_cp_client *cp_c, const struct bt_cp_client_
 	m_last_power_w = meas->inst_power;
 	m_last_power_update_ms = k_uptime_get();
 	LOG_INF("Power measurement: %d W", meas->inst_power);
+
+	if (meas->flags.crank_rev) {
+		m_cadence_rpm = ble_calculate_cadence(meas->cumul_crank_rev, meas->last_crank_evt);
+		m_cadence_update_ms = k_uptime_get();
+	}
 }
 
 static void vector_cb(struct bt_cp_client *cp_c, const struct bt_cp_client_vector *vec, int err)
@@ -395,8 +468,10 @@ void ble_demo_log_status(void)
 {
 	LOG_INF("ble_demo: connected=%d matched_service=%d", default_conn != NULL,
 		matched_service);
-	LOG_INF("ble_demo: CPS discovered=%d notif_count=%u last_power=%d W age_ms=%u",
-		m_cps_discovered, m_cps_notif_count, m_last_power_w, ble_demo_get_power_age_ms());
+	LOG_INF("ble_demo: CPS discovered=%d notif_count=%u last_power=%d W age_ms=%u "
+		"last_cadence=%u rpm age_ms=%u",
+		m_cps_discovered, m_cps_notif_count, m_last_power_w, ble_demo_get_power_age_ms(),
+		m_cadence_rpm, ble_demo_get_cadence_age_ms());
 	LOG_INF("ble_demo: HRS discovered=%d notif_count=%u last_hr=%u bpm age_ms=%u",
 		m_hrs_discovered, m_hrs_notif_count, m_last_hr_bpm, ble_demo_get_hr_age_ms());
 }
@@ -427,4 +502,18 @@ uint32_t ble_demo_get_hr_age_ms(void)
 	}
 
 	return (uint32_t)(k_uptime_get() - m_last_hr_update_ms);
+}
+
+uint8_t ble_demo_get_cadence_rpm(void)
+{
+	return m_cadence_rpm;
+}
+
+uint32_t ble_demo_get_cadence_age_ms(void)
+{
+	if (m_cadence_update_ms == 0) {
+		return UINT32_MAX;
+	}
+
+	return (uint32_t)(k_uptime_get() - m_cadence_update_ms);
 }
