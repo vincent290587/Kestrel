@@ -76,6 +76,16 @@ static inline FIT_DATE_TIME fit_timestamp_from_unix(uint32_t unix_timestamp)
 	return (FIT_DATE_TIME)(unix_timestamp - FIT_EPOCH_OFFSET_FROM_UNIX);
 }
 
+/* Same "5 * m + 500" scale/offset as ride_recorder_add_sample()'s own
+ * rec.altitude assignment (see fit_example.h's FIT_LAP_MESG/
+ * FIT_SESSION_MESG comments) -- shared here since lap/session altitude
+ * aggregates need the identical conversion applied to floats instead of
+ * the raw alt_cm integer the per-record field uses. */
+static inline FIT_UINT16 fit_altitude_from_m(float alt_m)
+{
+	return (FIT_UINT16)(2500.0f + alt_m * 5.0f);
+}
+
 /* Same physical/protocol address every other QSPI XIP user in this port
  * (main.c's qspi_xip_demo()) uses -- Nordic's NRF_MEMORY_EXTFLASH_BASE,
  * not discoverable from devicetree. See that file's own comment for the
@@ -103,8 +113,23 @@ typedef struct __attribute__((packed)) {
 	uint32_t write_cursor; /* bytes of record-stream written in this slot */
 	uint32_t last_timestamp;
 	float distance_m;
-	float climb_m;
+	float climb_m; /* ascent only, see ride_tick_work_handler()'s own comment */
 	uint32_t nb_records;
+	/* Real GPS Ally NPE crash, found 2026-09-12: Ride.java's onMesg(LapMesg)/
+	 * onMesg(SessionMesg) unconditionally call .intValue() on several
+	 * FIT fields (avg_altitude/min_altitude on LAP; total_ascent/
+	 * total_descent/total_calories/enhanced_min_altitude/
+	 * enhanced_max_altitude on SESSION) with no null check, unlike every
+	 * other field in those same methods -- this port's exported FIT file
+	 * never set any of them, so the FIT SDK's generated getters returned
+	 * null and the app crashed decoding the LAP message (the first of the
+	 * two to appear in file order) the instant a download finished.
+	 * These four fields plus fit_example.{h,c}'s newly-uncommented
+	 * FIT_LAP_MESG/FIT_SESSION_MESG fields are the fix. */
+	float descent_m;
+	float min_alt_m;
+	float max_alt_m;
+	float sum_alt_m;
 } sRideSlotState;
 
 typedef struct __attribute__((packed)) {
@@ -477,6 +502,14 @@ static bool ride_export_slot_to_sd(uint8_t slot_index, sRideSlotState *st)
 	lap_msg.total_elapsed_time = (st->last_timestamp - st->start_timestamp) * 1000;
 	lap_msg.event = FIT_EVENT_LAP;
 	lap_msg.sport = FIT_SPORT_CYCLING;
+	/* avg_altitude/min_altitude: real GPS Ally NPE fix, see
+	 * sRideSlotState's own comment -- guarded for the st->nb_records==0
+	 * edge case (a ride started and stopped with no samples yet), where
+	 * min_alt_m/max_alt_m/sum_alt_m were never seeded past their
+	 * zeroed-by-memset defaults. */
+	lap_msg.avg_altitude =
+		fit_altitude_from_m(st->nb_records > 0 ? st->sum_alt_m / (float)st->nb_records : 0.f);
+	lap_msg.min_altitude = fit_altitude_from_m(st->min_alt_m);
 	ok = ok && ride_write_mesg(&file, FIT_MESG_LAP, &lap_msg, FIT_LAP_MESG_SIZE);
 
 	/* event: stop */
@@ -494,6 +527,15 @@ static bool ride_export_slot_to_sd(uint8_t slot_index, sRideSlotState *st)
 	session_msg.total_elapsed_time = (st->last_timestamp - st->start_timestamp) * 1000;
 	session_msg.sport = FIT_SPORT_CYCLING;
 	session_msg.sub_sport = FIT_SUB_SPORT_MOUNTAIN;
+	/* Real GPS Ally NPE fix, see sRideSlotState's own comment --
+	 * total_calories isn't tracked by this port (no calorie model yet),
+	 * written as 0 purely so the field is non-null, same reasoning as
+	 * lap_msg's altitude fields above. */
+	session_msg.total_ascent = (FIT_UINT16)st->climb_m;
+	session_msg.total_descent = (FIT_UINT16)st->descent_m;
+	session_msg.total_calories = 0;
+	session_msg.enhanced_min_altitude = (FIT_UINT32)fit_altitude_from_m(st->min_alt_m);
+	session_msg.enhanced_max_altitude = (FIT_UINT32)fit_altitude_from_m(st->max_alt_m);
 	ok = ok && ride_write_mesg(&file, FIT_MESG_SESSION, &session_msg, FIT_SESSION_MESG_SIZE);
 
 	/* activity */
@@ -612,7 +654,7 @@ bool ride_recorder_is_active(void)
 void ride_recorder_add_sample(int32_t lat_semicircles, int32_t lon_semicircles, int32_t alt_cm,
 			       uint8_t hrm_bpm, uint8_t cadence, uint16_t power_w,
 			       uint32_t unix_timestamp, float distance_delta_m,
-			       float climb_delta_m)
+			       float climb_delta_m, float descent_delta_m)
 {
 	ARG_UNUSED(power_w); /* not yet an active field in this FIT profile, see ride_recorder.h */
 
@@ -647,6 +689,26 @@ void ride_recorder_add_sample(int32_t lat_semicircles, int32_t lon_semicircles, 
 	st->last_timestamp = unix_timestamp;
 	st->distance_m += distance_delta_m;
 	st->climb_m += climb_delta_m;
+	st->descent_m += descent_delta_m;
+
+	float alt_m = (float)alt_cm / 100.0f;
+
+	if (st->nb_records == 1) {
+		/* First sample of the ride (post-increment in
+		 * ride_write_record()) -- seed min/max instead of comparing
+		 * against the zeroed-by-memset defaults from
+		 * ride_recorder_start(), which would wrongly clamp max to 0. */
+		st->min_alt_m = alt_m;
+		st->max_alt_m = alt_m;
+	} else {
+		if (alt_m < st->min_alt_m) {
+			st->min_alt_m = alt_m;
+		}
+		if (alt_m > st->max_alt_m) {
+			st->max_alt_m = alt_m;
+		}
+	}
+	st->sum_alt_m += alt_m;
 
 	ride_fram_save();
 }
@@ -727,12 +789,14 @@ static void ride_tick_work_handler(struct k_work *work)
 		uint32_t ts;
 
 		if (have_pos && gps_demo_get_unix_timestamp(&ts)) {
-			float dist_delta = 0.f, climb_delta = 0.f;
+			float dist_delta = 0.f, climb_delta = 0.f, descent_delta = 0.f;
 
 			if (s_have_prev_fix) {
 				dist_delta = ride_haversine_m(s_prev_lat, s_prev_lon, lat, lon);
 				if (have_alt && alt > s_prev_alt) {
 					climb_delta = alt - s_prev_alt;
+				} else if (have_alt && alt < s_prev_alt) {
+					descent_delta = s_prev_alt - alt;
 				}
 			}
 
@@ -745,7 +809,7 @@ static void ride_tick_work_handler(struct k_work *work)
 			uint32_t cad = bsc_demo_is_paired() ? bsc_demo_get_cadence() : 0;
 
 			ride_recorder_add_sample(lat_sc, lon_sc, alt_cm, bpm, (uint8_t)cad, 0, ts,
-						  dist_delta, climb_delta);
+						  dist_delta, climb_delta, descent_delta);
 
 			s_prev_lat = lat;
 			s_prev_lon = lon;

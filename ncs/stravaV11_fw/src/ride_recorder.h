@@ -50,13 +50,14 @@ bool ride_recorder_is_active(void);
  * record (this profile's FIT_RECORD_MESG has no active power field, see
  * ride_recorder.c's own note) but is folded into nothing else either --
  * accepted as a parameter now so the call site doesn't need to change
- * again once that's added. distance_delta_m/climb_delta_m are this
- * sample's own contribution (not running totals) -- ride_recorder.c
- * accumulates and caches the totals in FRAM itself. */
+ * again once that's added. distance_delta_m/climb_delta_m/descent_delta_m
+ * are this sample's own contribution (not running totals) --
+ * ride_recorder.c accumulates and caches the totals (plus altitude min/
+ * max/avg) in FRAM itself. */
 void ride_recorder_add_sample(int32_t lat_semicircles, int32_t lon_semicircles, int32_t alt_cm,
 			       uint8_t hrm_bpm, uint8_t cadence, uint16_t power_w,
 			       uint32_t unix_timestamp, float distance_delta_m,
-			       float climb_delta_m);
+			       float climb_delta_m, float descent_delta_m);
 
 /* Ends the active ride: marks it PENDING_EXPORT in FRAM, then attempts to
  * finalize it straight to the SD card in one pass (see

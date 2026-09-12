@@ -5143,9 +5143,12 @@ typedef struct PACKED
 // session message
 
 // TODO custom that
-#define FIT_SESSION_USER_MSG_FIELDS_NB      5
+/* Bumped 5->10 to add enhanced_min/max_altitude, total_calories,
+ * total_ascent, total_descent -- see Ride.java NPE fix in ride_recorder.c's
+ * own comment on FIT_EPOCH_OFFSET_FROM_UNIX's neighbor for why. */
+#define FIT_SESSION_USER_MSG_FIELDS_NB      10
 
-#define FIT_SESSION_MESG_SIZE                                                   14
+#define FIT_SESSION_MESG_SIZE                                                   28
 #define FIT_SESSION_MESG_DEF_SIZE                                               ((FIT_SESSION_USER_MSG_FIELDS_NB*FIT_FIELD_DEF_SIZE) + 5)
 #define FIT_SESSION_MESG_TIME_IN_HR_ZONE_COUNT                                  1
 #define FIT_SESSION_MESG_TIME_IN_SPEED_ZONE_COUNT                               1
@@ -5180,17 +5183,17 @@ typedef struct PACKED
 //   FIT_UINT32 enhanced_avg_speed; // 1000 * m/s + 0, total_distance / total_timer_time
 //   FIT_UINT32 enhanced_max_speed; // 1000 * m/s + 0,
 //   FIT_UINT32 enhanced_avg_altitude; // 5 * m + 500,
-//   FIT_UINT32 enhanced_min_altitude; // 5 * m + 500,
-//   FIT_UINT32 enhanced_max_altitude; // 5 * m + 500,
+   FIT_UINT32 enhanced_min_altitude; // 5 * m + 500,
+   FIT_UINT32 enhanced_max_altitude; // 5 * m + 500,
 //   FIT_MESSAGE_INDEX message_index; // Selected bit is set for the current session.
-//   FIT_UINT16 total_calories; // 1 * kcal + 0,
+   FIT_UINT16 total_calories; // 1 * kcal + 0,
 //   FIT_UINT16 total_fat_calories; // 1 * kcal + 0,
 //   FIT_UINT16 avg_speed; // 1000 * m/s + 0, total_distance / total_timer_time
 //   FIT_UINT16 max_speed; // 1000 * m/s + 0,
 //   FIT_UINT16 avg_power; // 1 * watts + 0, total_power / total_timer_time if non_zero_avg_power otherwise total_power / total_elapsed_time
 //   FIT_UINT16 max_power; // 1 * watts + 0,
-//   FIT_UINT16 total_ascent; // 1 * m + 0,
-//   FIT_UINT16 total_descent; // 1 * m + 0,
+   FIT_UINT16 total_ascent; // 1 * m + 0,
+   FIT_UINT16 total_descent; // 1 * m + 0,
 //   FIT_UINT16 first_lap_index; //
 //   FIT_UINT16 num_laps; //
 //   FIT_UINT16 normalized_power; // 1 * watts + 0,
@@ -5449,9 +5452,11 @@ typedef struct PACKED
 // lap message
 
 // TODO custom that
-#define FIT_LAP_USER_MSG_FIELDS_NB      5
+/* Bumped 5->7 to add avg_altitude/min_altitude -- see the matching
+ * FIT_SESSION_USER_MSG_FIELDS_NB comment above. */
+#define FIT_LAP_USER_MSG_FIELDS_NB      7
 
-#define FIT_LAP_MESG_SIZE                                                       14
+#define FIT_LAP_MESG_SIZE                                                       18
 #define FIT_LAP_MESG_DEF_SIZE                                                   ((FIT_LAP_USER_MSG_FIELDS_NB*FIT_FIELD_DEF_SIZE) + 5)
 #define FIT_LAP_MESG_TIME_IN_HR_ZONE_COUNT                                      1
 #define FIT_LAP_MESG_TIME_IN_SPEED_ZONE_COUNT                                   1
@@ -5504,7 +5509,7 @@ typedef struct PACKED
 //   FIT_UINT16 first_length_index; //
 //   FIT_UINT16 avg_stroke_distance; // 100 * m + 0,
 //   FIT_UINT16 num_active_lengths; // 1 * lengths + 0, # of active lengths of swim pool
-//   FIT_UINT16 avg_altitude; // 5 * m + 500,
+   FIT_UINT16 avg_altitude; // 5 * m + 500,
 //   FIT_UINT16 max_altitude; // 5 * m + 500,
 //   FIT_SINT16 avg_grade; // 100 * % + 0,
 //   FIT_SINT16 avg_pos_grade; // 100 * % + 0,
@@ -5516,7 +5521,7 @@ typedef struct PACKED
 //   FIT_SINT16 max_pos_vertical_speed; // 1000 * m/s + 0,
 //   FIT_SINT16 max_neg_vertical_speed; // 1000 * m/s + 0,
 //   FIT_UINT16 repetition_num; //
-//   FIT_UINT16 min_altitude; // 5 * m + 500,
+   FIT_UINT16 min_altitude; // 5 * m + 500,
 //   FIT_MESSAGE_INDEX wkt_step_index; //
 //   FIT_UINT16 opponent_score; //
 //   FIT_UINT16 stroke_count[FIT_LAP_MESG_STROKE_COUNT_COUNT]; // 1 * counts + 0, stroke_type enum used as the index
