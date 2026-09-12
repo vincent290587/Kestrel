@@ -2,18 +2,19 @@
 
 #include "hrm_demo.h"
 #include "bsc_demo.h"
-#include "fec_demo.h"
 #include "stc3100_demo.h"
 #include "gps_demo.h"
+#include "power_provider.h"
+#include "hrm_provider.h"
 
+/* hr_bpm/power_w delegate to hrm_provider.h/power_provider.h (2026-09-12)
+ * -- those already do this exact "is it live right now" gating (ANT+ or
+ * BLE, whichever is actually connected), so this shim's own job is done
+ * simply by forwarding to them instead of re-implementing it against
+ * hrm_demo.h/fec_demo.h directly. */
 bool model_glue_get_hr_bpm(uint8_t *bpm)
 {
-	if (!hrm_demo_is_paired() || hrm_demo_get_age_ms() >= MODEL_GLUE_STALE_MS) {
-		return false;
-	}
-
-	*bpm = hrm_demo_get_bpm();
-	return true;
+	return hrm_provider_get_bpm(bpm);
 }
 
 bool model_glue_get_hr_rr_ms(uint16_t *rr_ms)
@@ -48,12 +49,7 @@ bool model_glue_get_cadence_rpm(uint32_t *cadence_rpm)
 
 bool model_glue_get_power_w(uint16_t *power_w)
 {
-	if (!fec_demo_is_paired() || fec_demo_get_power_age_ms() >= MODEL_GLUE_STALE_MS) {
-		return false;
-	}
-
-	*power_w = fec_demo_get_power_w();
-	return true;
+	return power_provider_get_watts(power_w);
 }
 
 bool model_glue_get_battery_percent(float *percent)

@@ -57,9 +57,18 @@ static enum ble_matched_service matched_service;
 static bool m_cps_discovered;
 static uint32_t m_cps_notif_count;
 static int16_t m_last_power_w;
+/* power_provider.c's own freshness check (2026-09-12) -- see ble_demo.h's
+ * comment on why an age, not just m_cps_discovered, is what it needs. 0
+ * (the zero-initialized default, and not a realistic real k_uptime_get()
+ * value for an actual measurement) means "never set" -- same convention
+ * fec_demo.c's own m_power_last_update_ms/hrm_demo.c's m_last_update_ms
+ * already use, for the same reason. */
+static int64_t m_last_power_update_ms;
 
 static bool m_hrs_discovered;
 static uint32_t m_hrs_notif_count;
+static uint8_t m_last_hr_bpm;
+static int64_t m_last_hr_update_ms;
 
 static void measurement_cb(struct bt_cp_client *cp_c, const struct bt_cp_client_measurement *meas,
 			    int err)
@@ -70,6 +79,7 @@ static void measurement_cb(struct bt_cp_client *cp_c, const struct bt_cp_client_
 	}
 	m_cps_notif_count++;
 	m_last_power_w = meas->inst_power;
+	m_last_power_update_ms = k_uptime_get();
 	LOG_INF("Power measurement: %d W", meas->inst_power);
 }
 
@@ -135,6 +145,8 @@ static void hrs_measurement_cb(struct bt_hrs_client *hrs_c, const struct bt_hrs_
 		return;
 	}
 	m_hrs_notif_count++;
+	m_last_hr_bpm = meas->hr_value;
+	m_last_hr_update_ms = k_uptime_get();
 	LOG_INF("Heart rate: %u bpm%s", meas->hr_value,
 		meas->flags.rr_intervals_present ? " (RR intervals present)" : "");
 }
@@ -383,7 +395,36 @@ void ble_demo_log_status(void)
 {
 	LOG_INF("ble_demo: connected=%d matched_service=%d", default_conn != NULL,
 		matched_service);
-	LOG_INF("ble_demo: CPS discovered=%d notif_count=%u last_power=%d W", m_cps_discovered,
-		m_cps_notif_count, m_last_power_w);
-	LOG_INF("ble_demo: HRS discovered=%d notif_count=%u", m_hrs_discovered, m_hrs_notif_count);
+	LOG_INF("ble_demo: CPS discovered=%d notif_count=%u last_power=%d W age_ms=%u",
+		m_cps_discovered, m_cps_notif_count, m_last_power_w, ble_demo_get_power_age_ms());
+	LOG_INF("ble_demo: HRS discovered=%d notif_count=%u last_hr=%u bpm age_ms=%u",
+		m_hrs_discovered, m_hrs_notif_count, m_last_hr_bpm, ble_demo_get_hr_age_ms());
+}
+
+uint16_t ble_demo_get_power_w(void)
+{
+	return (uint16_t)m_last_power_w;
+}
+
+uint32_t ble_demo_get_power_age_ms(void)
+{
+	if (m_last_power_update_ms == 0) {
+		return UINT32_MAX;
+	}
+
+	return (uint32_t)(k_uptime_get() - m_last_power_update_ms);
+}
+
+uint8_t ble_demo_get_hr_bpm(void)
+{
+	return m_last_hr_bpm;
+}
+
+uint32_t ble_demo_get_hr_age_ms(void)
+{
+	if (m_last_hr_update_ms == 0) {
+		return UINT32_MAX;
+	}
+
+	return (uint32_t)(k_uptime_get() - m_last_hr_update_ms);
 }

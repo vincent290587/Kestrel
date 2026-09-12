@@ -49,9 +49,9 @@
 #include "fit.h"
 #include "fit_crc.h"
 #include "gps_demo.h"
-#include "hrm_demo.h"
 #include "bsc_demo.h"
-#include "fec_demo.h"
+#include "power_provider.h"
+#include "hrm_provider.h"
 
 LOG_MODULE_REGISTER(ride_recorder, LOG_LEVEL_INF);
 
@@ -1121,16 +1121,17 @@ static void ride_tick_work_handler(struct k_work *work)
 			int32_t lat_sc = (int32_t)(lat * 11930464.7111f);
 			int32_t lon_sc = (int32_t)(lon * 11930464.7111f);
 			int32_t alt_cm = (int32_t)(alt * 100.0f);
-			uint8_t bpm = hrm_demo_is_paired() ? hrm_demo_get_bpm() : 0;
+			/* power_provider.h/hrm_provider.h (2026-09-12) unify
+			 * ANT+ and BLE behind one call each -- see their own
+			 * comments for the source-precedence rule. Cadence
+			 * has no BLE counterpart in this codebase, so it
+			 * stays a direct ANT+ call. */
+			uint8_t bpm = 0;
 			uint32_t cad = bsc_demo_is_paired() ? bsc_demo_get_cadence() : 0;
-			/* ANT+ FE-C only, same as HRM/cadence above -- not
-			 * unified with BLE Cycling Power, matching this
-			 * function's existing pattern exactly. Reads 0 with the
-			 * default ANT_ENABLED=OFF build (ant_stubs.c's
-			 * fec_demo_is_paired() always reports unpaired then) --
-			 * real per-lap power/normalized-power numbers need
-			 * ANT_ENABLED=ON and a real ANT+ power meter paired. */
-			uint16_t power_w = fec_demo_is_paired() ? fec_demo_get_power_w() : 0;
+			uint16_t power_w = 0;
+
+			hrm_provider_get_bpm(&bpm);
+			power_provider_get_watts(&power_w);
 
 			ride_recorder_add_sample(lat_sc, lon_sc, alt_cm, bpm, (uint8_t)cad, power_w,
 						  ts, dist_delta, climb_delta, descent_delta);

@@ -170,6 +170,8 @@ target_sources(app PRIVATE
   src/menu_content.cpp
   src/debug_screen_data.cpp
   src/lap_screen_data.cpp
+  src/power_provider.c
+  src/hrm_provider.c
   lib/source/g_structs.c
   lib/source/model/PowerZone.cpp
   lib/source/model/RRZone.cpp
