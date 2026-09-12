@@ -5,23 +5,26 @@
  *    survives real power loss, not just a warm reset;
  *  - the NOR-side record writer: a raw, filesystem-free append log inside
  *    ride_storage_partition (stravav11_nrf52840.dts), one 2MB slot per
- *    ride. Only ever holds `record` messages, written once-definition-
- *    then-fixed-size (this profile's FIT_RECORD_MESG_DEF_SIZE +
- *    FIT_RECORD_MESG_SIZE once, then FIT_HDR_SIZE + FIT_RECORD_MESG_SIZE
- *    per sample after that) -- deliberately not a technically-valid FIT
- *    file on its own; NOR flash can only clear bits on program (never set
- *    them back to 1 without a sector erase), so the classic "patch the
- *    header's data_size in place as you go" trick from stravaV10's own
- *    fit_encode.cpp -- fine on SD/FAT, whose own FTL hides that -- simply
- *    doesn't work here. Finalizing into a real, valid .FIT file only
- *    happens once, straight to the SD card, in ride_export_slot_to_sd().
+ *    ride. Holds `record` messages (local mesg id 0, written once-
+ *    definition-then-fixed-size) interleaved with `lap` messages (local
+ *    mesg id 1, same trick, added 2026-09-12 for the manual-lap feature
+ *    -- see ride_recorder_lap()) -- deliberately not a technically-valid
+ *    FIT file on its own; NOR flash can only clear bits on program
+ *    (never set them back to 1 without a sector erase), so the classic
+ *    "patch the header's data_size in place as you go" trick from
+ *    stravaV10's own fit_encode.cpp -- fine on SD/FAT, whose own FTL
+ *    hides that -- simply doesn't work here. Finalizing into a real,
+ *    valid .FIT file only happens once, straight to the SD card, in
+ *    ride_export_slot_to_sd().
  *  - the SD-side finalize/export: a single pass (file_id/creator/start
- *    event, the whole NOR record stream copied verbatim via the XIP
+ *    event, the whole NOR record+lap stream copied verbatim via the XIP
  *    memory-mapped read path already validated in Phase 11's
- *    qspi_xip_demo(), then lap/stop-event/session/activity/crc) --
+ *    qspi_xip_demo(), then one final trailing lap/stop-event/session/
+ *    activity/crc for whatever lap was still open at RIDE STOP) --
  *    possible in one pass, no placeholder-then-patch step, because the
  *    final data_size is always known in advance (fixed one-time message
- *    sizes + FRAM's own write_cursor for that slot).
+ *    sizes + FRAM's own write_cursor for that slot, which already
+ *    includes every interleaved lap record).
  */
 
 #include "ride_recorder.h"
@@ -48,6 +51,7 @@
 #include "gps_demo.h"
 #include "hrm_demo.h"
 #include "bsc_demo.h"
+#include "fec_demo.h"
 
 LOG_MODULE_REGISTER(ride_recorder, LOG_LEVEL_INF);
 
@@ -107,6 +111,21 @@ typedef enum {
 	eRideSlotPendingExport = 2,
 } eRideSlotState;
 
+/* Manual-lap feature: how many *closed* laps FRAM remembers for the
+ * on-screen display and reboot survival. A ride can have far more laps
+ * than this (each one is durably written into the QSPI record stream
+ * regardless, see ride_write_lap_to_stream()) -- this is deliberately
+ * small, not a cap on real lap count, just on how much lap *history*
+ * the live display needs to show. */
+#define RIDE_LAP_DISPLAY_COUNT 5
+
+typedef struct __attribute__((packed)) {
+	uint32_t lap_number; /* 1-based */
+	uint32_t elapsed_s; /* this lap's own duration */
+	uint16_t avg_power_w;
+	uint16_t normalized_power_w;
+} sRideRecentLap;
+
 typedef struct __attribute__((packed)) {
 	uint8_t state; /* eRideSlotState */
 	uint32_t start_timestamp;
@@ -130,6 +149,31 @@ typedef struct __attribute__((packed)) {
 	float min_alt_m;
 	float max_alt_m;
 	float sum_alt_m;
+	/* Manual-lap feature (2026-09-12): the *currently open* lap's live
+	 * accumulators, persisted for the same resume-safety reasoning as
+	 * distance_m/climb_m/etc. above -- a crash mid-lap just means the
+	 * open lap's stats keep accumulating correctly from where they left
+	 * off, same as every other running total in this struct. Not
+	 * reset at lap boundaries: current_lap_start_timestamp (also
+	 * doubles as this lap's start for total_elapsed_time). Every
+	 * *closed* lap is written straight into the QSPI stream as its own
+	 * FIT_LAP_MESG (see ride_write_lap_to_stream()) instead of being
+	 * buffered here -- FRAM only needs to remember the last
+	 * RIDE_LAP_DISPLAY_COUNT of them (recent_laps[], below) for the
+	 * on-screen display and reboot survival; the full lap history
+	 * already lives safely in the QSPI stream, same as every GPS
+	 * record. */
+	uint32_t current_lap_start_timestamp;
+	uint32_t lap_power_sum;
+	uint32_t lap_power_count;
+	double lap_np_sum_pow4; /* sum of (30s rolling avg power)^4, for Normalized Power */
+	uint32_t lap_np_count;
+	float lap_min_alt_m;
+	float lap_max_alt_m;
+	float lap_sum_alt_m;
+	uint32_t lap_nb_records;
+	uint32_t total_completed_laps; /* never reset within a ride; also gates the LAP stream def write-once */
+	sRideRecentLap recent_laps[RIDE_LAP_DISPLAY_COUNT];
 } sRideSlotState;
 
 typedef struct __attribute__((packed)) {
@@ -149,6 +193,18 @@ static int8_t s_active_slot = -1; /* -1 = none active this boot */
  * jump from stale state. */
 static bool s_have_prev_fix;
 static float s_prev_lat, s_prev_lon, s_prev_alt;
+
+/* Normalized Power's 30-second rolling-average window: RAM-only, same
+ * "acceptable to lose on a crash" reasoning as s_have_prev_fix/
+ * s_prev_lat/lon/alt above -- a crash mid-ride just means a ~30s
+ * re-warm-up of this window, not a wrong or missing lap boundary. Not
+ * reset at lap boundaries (continuous across the whole ride, standard
+ * Normalized Power methodology) -- only reset when a new ride starts. */
+#define NP_WINDOW_SAMPLES 30 /* seconds, matches RIDE_TICK_INTERVAL_MS below */
+static uint16_t s_np_window[NP_WINDOW_SAMPLES];
+static uint8_t s_np_window_count;
+static uint8_t s_np_window_idx;
+static uint32_t s_np_window_sum;
 
 static uint8_t ride_calculate_crc(const uint8_t *addr, uint16_t len)
 {
@@ -232,35 +288,25 @@ static uint32_t ride_slot_offset(uint8_t slot_index)
 }
 
 /*
- * Appends one FIT `record` message (definition included, only the very
- * first time this slot is written this ride) to the slot's raw NOR
- * record stream. Sector-erase-ahead: whenever the write would straddle a
- * sector boundary, the cursor skips to the start of the next sector
- * first (wasting at most one record's worth of space per 4KB sector --
- * negligible at this record size) so "erase whenever the cursor lands
- * exactly on a sector boundary" is the only erase rule needed, and it's
- * fully re-derivable from write_cursor alone after a resume -- no
- * separate erase-watermark needs persisting.
+ * Appends `len` already-framed FIT bytes (a def+data pair, or a bare
+ * data record reusing an earlier def) to the slot's raw NOR stream.
+ * Shared by ride_write_record() (local mesg id 0, RECORD) and
+ * ride_write_lap_to_stream() (local mesg id 1, LAP) -- both message
+ * types are appended to the exact same growing byte range, distinguished
+ * only by their own local mesg id, exactly like two FIT local message
+ * definitions coexisting in any real FIT file. Sector-erase-ahead:
+ * whenever the write would straddle a sector boundary, the cursor skips
+ * to the start of the next sector first (wasting at most one message's
+ * worth of space per 4KB sector -- negligible at these message sizes)
+ * so "erase whenever the cursor lands exactly on a sector boundary" is
+ * the only erase rule needed, and it's fully re-derivable from
+ * write_cursor alone after a resume -- no separate erase-watermark needs
+ * persisting.
  */
-static int ride_write_record(uint8_t slot_index, sRideSlotState *st, const FIT_RECORD_MESG *rec)
+static int ride_stream_append(uint8_t slot_index, sRideSlotState *st, const uint8_t *buf,
+			       size_t len)
 {
 	const struct device *qspi = ride_qspi_dev();
-	uint8_t buf[FIT_HDR_SIZE + FIT_RECORD_MESG_DEF_SIZE + FIT_HDR_SIZE + FIT_RECORD_MESG_SIZE];
-	size_t len = 0;
-	const uint8_t local_mesg_number = 0;
-
-	if (st->nb_records == 0) {
-		uint8_t def_hdr = local_mesg_number | FIT_HDR_TYPE_DEF_BIT;
-
-		buf[len++] = def_hdr;
-		memcpy(&buf[len], fit_mesg_defs[FIT_MESG_RECORD], FIT_RECORD_MESG_DEF_SIZE);
-		len += FIT_RECORD_MESG_DEF_SIZE;
-	}
-
-	buf[len++] = local_mesg_number;
-	memcpy(&buf[len], rec, FIT_RECORD_MESG_SIZE);
-	len += FIT_RECORD_MESG_SIZE;
-
 	uint32_t cursor = st->write_cursor;
 
 	if ((cursor % RIDE_SECTOR_SIZE) + len > RIDE_SECTOR_SIZE) {
@@ -268,7 +314,8 @@ static int ride_write_record(uint8_t slot_index, sRideSlotState *st, const FIT_R
 	}
 
 	if (cursor + len > RIDE_SLOT_SIZE) {
-		LOG_ERR("ride_recorder: slot %u full (cursor=%u), dropping sample", slot_index, cursor);
+		LOG_ERR("ride_recorder: slot %u full (cursor=%u), dropping message", slot_index,
+			cursor);
 		return -ENOSPC;
 	}
 
@@ -303,7 +350,7 @@ static int ride_write_record(uint8_t slot_index, sRideSlotState *st, const FIT_R
 	uint32_t aligned_addr = cursor & ~3u;
 	uint32_t lead_pad = cursor - aligned_addr;
 	uint32_t aligned_len = (lead_pad + len + 3u) & ~3u;
-	uint8_t aligned_buf[sizeof(buf) + 6];
+	uint8_t aligned_buf[FIT_HDR_SIZE + FIT_LAP_MESG_DEF_SIZE + FIT_HDR_SIZE + FIT_LAP_MESG_SIZE + 6];
 
 	memset(aligned_buf, 0xFF, lead_pad);
 	memcpy(&aligned_buf[lead_pad], buf, len);
@@ -318,9 +365,89 @@ static int ride_write_record(uint8_t slot_index, sRideSlotState *st, const FIT_R
 	}
 
 	st->write_cursor = cursor + (uint32_t)len;
-	st->nb_records++;
 
 	return 0;
+}
+
+static int ride_write_record(uint8_t slot_index, sRideSlotState *st, const FIT_RECORD_MESG *rec)
+{
+	uint8_t buf[FIT_HDR_SIZE + FIT_RECORD_MESG_DEF_SIZE + FIT_HDR_SIZE + FIT_RECORD_MESG_SIZE];
+	size_t len = 0;
+	const uint8_t local_mesg_number = 0;
+
+	if (st->nb_records == 0) {
+		uint8_t def_hdr = local_mesg_number | FIT_HDR_TYPE_DEF_BIT;
+
+		buf[len++] = def_hdr;
+		memcpy(&buf[len], fit_mesg_defs[FIT_MESG_RECORD], FIT_RECORD_MESG_DEF_SIZE);
+		len += FIT_RECORD_MESG_DEF_SIZE;
+	}
+
+	buf[len++] = local_mesg_number;
+	memcpy(&buf[len], rec, FIT_RECORD_MESG_SIZE);
+	len += FIT_RECORD_MESG_SIZE;
+
+	int err = ride_stream_append(slot_index, st, buf, len);
+
+	if (err == 0) {
+		st->nb_records++;
+	}
+
+	return err;
+}
+
+/* Manual-lap feature (2026-09-12): appends one *closed* lap straight into
+ * the same growing QSPI stream ride_write_record() uses, under its own
+ * local mesg id (1, distinct from RECORD's 0) so the two message types
+ * coexist without either redefining the other's meaning -- a real FIT
+ * decoder tracks "what does local id N currently mean" independently per
+ * id, exactly like this. This is what lets a ride have far more laps
+ * than FRAM's small recent_laps[] display window without any extra FRAM
+ * cost: every closed lap is durable here the instant it closes, same
+ * crash-safety guarantee the GPS records already have. */
+static int ride_write_lap_to_stream(uint8_t slot_index, sRideSlotState *st,
+				     const FIT_LAP_MESG *lap)
+{
+	uint8_t buf[FIT_HDR_SIZE + FIT_LAP_MESG_DEF_SIZE + FIT_HDR_SIZE + FIT_LAP_MESG_SIZE];
+	size_t len = 0;
+	const uint8_t local_mesg_number = 1;
+
+	if (st->total_completed_laps == 0) {
+		uint8_t def_hdr = local_mesg_number | FIT_HDR_TYPE_DEF_BIT;
+
+		buf[len++] = def_hdr;
+		memcpy(&buf[len], fit_mesg_defs[FIT_MESG_LAP], FIT_LAP_MESG_DEF_SIZE);
+		len += FIT_LAP_MESG_DEF_SIZE;
+	}
+
+	buf[len++] = local_mesg_number;
+	memcpy(&buf[len], lap, FIT_LAP_MESG_SIZE);
+	len += FIT_LAP_MESG_SIZE;
+
+	return ride_stream_append(slot_index, st, buf, len);
+}
+
+/* Reduces the *currently open* lap's live accumulators to the four FIT
+ * fields a FIT_LAP_MESG needs -- shared between ride_recorder_lap()
+ * (closing a lap early) and ride_export_slot_to_sd() (finalizing
+ * whatever lap is still open at RIDE STOP). avg_altitude/min_altitude
+ * must never be left at their zeroed-by-memset defaults when a lap has
+ * zero samples (e.g. two "LAP" commands in the same tick) -- see
+ * sRideSlotState's own comment on the real GPS Ally NPE crash this
+ * would otherwise regress. */
+static void ride_finalize_lap_metrics(const sRideSlotState *st, uint16_t *avg_power_w,
+				       uint16_t *normalized_power_w, FIT_UINT16 *avg_altitude_raw,
+				       FIT_UINT16 *min_altitude_raw)
+{
+	*avg_power_w =
+		st->lap_power_count > 0 ? (uint16_t)(st->lap_power_sum / st->lap_power_count) : 0;
+	*normalized_power_w =
+		st->lap_np_count > 0
+			? (uint16_t)pow(st->lap_np_sum_pow4 / (double)st->lap_np_count, 0.25)
+			: 0;
+	*avg_altitude_raw = fit_altitude_from_m(
+		st->lap_nb_records > 0 ? st->lap_sum_alt_m / (float)st->lap_nb_records : 0.f);
+	*min_altitude_raw = fit_altitude_from_m(st->lap_min_alt_m);
 }
 
 /* Running CRC over everything fs_write()s during export -- mirrors
@@ -508,23 +635,30 @@ static bool ride_export_slot_to_sd(uint8_t slot_index, sRideSlotState *st)
 		nrf_qspi_nor_xip_enable(qspi, false);
 	}
 
-	/* lap */
+	/* Trailing lap: whatever lap was still open at RIDE STOP. Every
+	 * *closed* lap before this one is already inside the
+	 * [0, write_cursor) byte range the XIP copy loop above just wrote
+	 * verbatim (see ride_write_lap_to_stream()) -- this is the only lap
+	 * message this function itself needs to build. */
 	FIT_LAP_MESG lap_msg;
+	uint16_t trailing_avg_power_w, trailing_normalized_power_w;
+	FIT_UINT16 trailing_avg_altitude_raw, trailing_min_altitude_raw;
+
+	ride_finalize_lap_metrics(st, &trailing_avg_power_w, &trailing_normalized_power_w,
+				   &trailing_avg_altitude_raw, &trailing_min_altitude_raw);
 
 	Fit_InitMesg(fit_mesg_defs[FIT_MESG_LAP], &lap_msg);
 	lap_msg.timestamp = fit_timestamp_from_unix(st->last_timestamp);
-	lap_msg.start_time = fit_timestamp_from_unix(st->start_timestamp);
-	lap_msg.total_elapsed_time = (st->last_timestamp - st->start_timestamp) * 1000;
+	lap_msg.start_time = fit_timestamp_from_unix(st->current_lap_start_timestamp);
+	lap_msg.total_elapsed_time = (st->last_timestamp - st->current_lap_start_timestamp) * 1000;
 	lap_msg.event = FIT_EVENT_LAP;
 	lap_msg.sport = FIT_SPORT_CYCLING;
+	lap_msg.avg_power = trailing_avg_power_w;
+	lap_msg.normalized_power = trailing_normalized_power_w;
 	/* avg_altitude/min_altitude: real GPS Ally NPE fix, see
-	 * sRideSlotState's own comment -- guarded for the st->nb_records==0
-	 * edge case (a ride started and stopped with no samples yet), where
-	 * min_alt_m/max_alt_m/sum_alt_m were never seeded past their
-	 * zeroed-by-memset defaults. */
-	lap_msg.avg_altitude =
-		fit_altitude_from_m(st->nb_records > 0 ? st->sum_alt_m / (float)st->nb_records : 0.f);
-	lap_msg.min_altitude = fit_altitude_from_m(st->min_alt_m);
+	 * sRideSlotState's own comment. */
+	lap_msg.avg_altitude = trailing_avg_altitude_raw;
+	lap_msg.min_altitude = trailing_min_altitude_raw;
 	ok = ok && ride_write_mesg(&file, FIT_MESG_LAP, &lap_msg, FIT_LAP_MESG_SIZE);
 
 	/* event: stop */
@@ -643,9 +777,13 @@ bool ride_recorder_start(uint32_t start_unix_timestamp)
 			s_state.slots[i].state = eRideSlotRecording;
 			s_state.slots[i].start_timestamp = start_unix_timestamp;
 			s_state.slots[i].last_timestamp = start_unix_timestamp;
+			s_state.slots[i].current_lap_start_timestamp = start_unix_timestamp;
 			s_state.next_slot_hint = (uint8_t)((i + 1) % RIDE_NUM_SLOTS);
 			s_active_slot = (int8_t)i;
 			s_have_prev_fix = false;
+			s_np_window_count = 0;
+			s_np_window_idx = 0;
+			s_np_window_sum = 0;
 
 			if (!ride_fram_save()) {
 				LOG_ERR("ride_recorder: FRAM save failed on start");
@@ -671,8 +809,6 @@ void ride_recorder_add_sample(int32_t lat_semicircles, int32_t lon_semicircles, 
 			       uint32_t unix_timestamp, float distance_delta_m,
 			       float climb_delta_m, float descent_delta_m)
 {
-	ARG_UNUSED(power_w); /* not yet an active field in this FIT profile, see ride_recorder.h */
-
 	if (s_active_slot < 0) {
 		return;
 	}
@@ -725,6 +861,50 @@ void ride_recorder_add_sample(int32_t lat_semicircles, int32_t lon_semicircles, 
 	}
 	st->sum_alt_m += alt_m;
 
+	/* Manual-lap feature: same seed-then-track pattern as the whole-ride
+	 * min/max above, scoped to the currently open lap instead (reset
+	 * whenever a lap closes, see ride_recorder_lap()). */
+	st->lap_nb_records++;
+	if (st->lap_nb_records == 1) {
+		st->lap_min_alt_m = alt_m;
+		st->lap_max_alt_m = alt_m;
+	} else {
+		if (alt_m < st->lap_min_alt_m) {
+			st->lap_min_alt_m = alt_m;
+		}
+		if (alt_m > st->lap_max_alt_m) {
+			st->lap_max_alt_m = alt_m;
+		}
+	}
+	st->lap_sum_alt_m += alt_m;
+
+	st->lap_power_sum += power_w;
+	st->lap_power_count++;
+
+	/* Normalized Power: a 30-second rolling average of power, raised to
+	 * the 4th power, averaged over the lap, then 4th-rooted (standard
+	 * Coggan/TrainingPeaks definition). The rolling window itself is
+	 * continuous across the whole ride (not reset per lap, see
+	 * s_np_window's own comment); only the per-lap sum-of-4th-powers
+	 * accumulator below resets at each lap boundary. */
+	if (s_np_window_count < NP_WINDOW_SAMPLES) {
+		s_np_window_sum += power_w;
+		s_np_window[s_np_window_idx] = power_w;
+		s_np_window_count++;
+	} else {
+		s_np_window_sum -= s_np_window[s_np_window_idx];
+		s_np_window_sum += power_w;
+		s_np_window[s_np_window_idx] = power_w;
+	}
+	s_np_window_idx = (uint8_t)((s_np_window_idx + 1) % NP_WINDOW_SAMPLES);
+
+	if (s_np_window_count == NP_WINDOW_SAMPLES) {
+		double rolling_avg = (double)s_np_window_sum / NP_WINDOW_SAMPLES;
+
+		st->lap_np_sum_pow4 += rolling_avg * rolling_avg * rolling_avg * rolling_avg;
+		st->lap_np_count++;
+	}
+
 	ride_fram_save();
 }
 
@@ -741,6 +921,127 @@ bool ride_recorder_stop(void)
 	s_active_slot = -1;
 
 	return ride_slot_export_and_free(slot);
+}
+
+bool ride_recorder_lap(void)
+{
+	if (s_active_slot < 0) {
+		LOG_WRN("ride_recorder: LAP refused, no ride active");
+		return false;
+	}
+
+	sRideSlotState *st = &s_state.slots[s_active_slot];
+
+	uint16_t avg_power_w, normalized_power_w;
+	FIT_UINT16 avg_altitude_raw, min_altitude_raw;
+
+	ride_finalize_lap_metrics(st, &avg_power_w, &normalized_power_w, &avg_altitude_raw,
+				   &min_altitude_raw);
+
+	FIT_LAP_MESG lap_msg;
+
+	Fit_InitMesg(fit_mesg_defs[FIT_MESG_LAP], &lap_msg);
+	lap_msg.start_time = fit_timestamp_from_unix(st->current_lap_start_timestamp);
+	lap_msg.timestamp = fit_timestamp_from_unix(st->last_timestamp);
+	lap_msg.total_elapsed_time = (st->last_timestamp - st->current_lap_start_timestamp) * 1000;
+	lap_msg.event = FIT_EVENT_LAP;
+	lap_msg.sport = FIT_SPORT_CYCLING;
+	lap_msg.avg_power = avg_power_w;
+	lap_msg.normalized_power = normalized_power_w;
+	lap_msg.avg_altitude = avg_altitude_raw;
+	lap_msg.min_altitude = min_altitude_raw;
+
+	int err = ride_write_lap_to_stream((uint8_t)s_active_slot, st, &lap_msg);
+
+	if (err != 0) {
+		LOG_ERR("ride_recorder: LAP write failed (%d), lap not closed", err);
+		return false;
+	}
+
+	sRideRecentLap *recent = &st->recent_laps[st->total_completed_laps % RIDE_LAP_DISPLAY_COUNT];
+
+	recent->lap_number = st->total_completed_laps + 1;
+	recent->elapsed_s = st->last_timestamp - st->current_lap_start_timestamp;
+	recent->avg_power_w = avg_power_w;
+	recent->normalized_power_w = normalized_power_w;
+
+	st->total_completed_laps++;
+
+	/* Reset the open-lap accumulators for the next lap -- the NP rolling
+	 * window itself (s_np_window*) is deliberately NOT reset here, see
+	 * its own comment. */
+	st->current_lap_start_timestamp = st->last_timestamp;
+	st->lap_power_sum = 0;
+	st->lap_power_count = 0;
+	st->lap_np_sum_pow4 = 0.0;
+	st->lap_np_count = 0;
+	st->lap_min_alt_m = 0.f;
+	st->lap_max_alt_m = 0.f;
+	st->lap_sum_alt_m = 0.f;
+	st->lap_nb_records = 0;
+
+	ride_fram_save();
+
+	LOG_INF("ride_recorder: lap %u closed (avg_power=%uW np=%uW)", recent->lap_number,
+		avg_power_w, normalized_power_w);
+	return true;
+}
+
+bool ride_recorder_get_current_lap(uint32_t *elapsed_s, uint16_t *avg_power_w,
+				    uint16_t *normalized_power_w, uint32_t *lap_number)
+{
+	if (s_active_slot < 0) {
+		return false;
+	}
+
+	const sRideSlotState *st = &s_state.slots[s_active_slot];
+
+	*elapsed_s = st->last_timestamp - st->current_lap_start_timestamp;
+	*lap_number = st->total_completed_laps + 1;
+
+	FIT_UINT16 unused_alt1, unused_alt2;
+
+	ride_finalize_lap_metrics(st, avg_power_w, normalized_power_w, &unused_alt1, &unused_alt2);
+	return true;
+}
+
+uint8_t ride_recorder_get_recent_laps(struct ride_recorder_lap_info *out, uint8_t max_count)
+{
+	int8_t slot = s_active_slot;
+
+	if (slot < 0) {
+		/* Same "still show the last touched slot" convention as
+		 * ride_recorder_get_live_totals() -- laps stay visible for a
+		 * short while after a clean RIDE STOP too. */
+		for (uint8_t i = 0; i < RIDE_NUM_SLOTS; i++) {
+			if (s_state.slots[i].total_completed_laps > 0) {
+				slot = (int8_t)i;
+				break;
+			}
+		}
+		if (slot < 0) {
+			return 0;
+		}
+	}
+
+	const sRideSlotState *st = &s_state.slots[slot];
+	uint32_t total = st->total_completed_laps;
+	uint8_t available = total < RIDE_LAP_DISPLAY_COUNT ? (uint8_t)total : RIDE_LAP_DISPLAY_COUNT;
+	uint8_t count = available < max_count ? available : max_count;
+
+	/* Most-recent first: total_completed_laps-1 is the last lap closed,
+	 * stored at index (total_completed_laps-1) % RIDE_LAP_DISPLAY_COUNT. */
+	for (uint8_t i = 0; i < count; i++) {
+		uint32_t idx = (total - 1 - i) % RIDE_LAP_DISPLAY_COUNT;
+		const sRideRecentLap *recent = &st->recent_laps[idx];
+
+		out[i].lap_number = recent->lap_number;
+		out[i].elapsed_s = recent->elapsed_s;
+		out[i].avg_power_w = recent->avg_power_w;
+		out[i].normalized_power_w = recent->normalized_power_w;
+	}
+
+	return count;
 }
 
 bool ride_recorder_get_live_totals(float *distance_m, float *climb_m)
@@ -822,9 +1123,17 @@ static void ride_tick_work_handler(struct k_work *work)
 			int32_t alt_cm = (int32_t)(alt * 100.0f);
 			uint8_t bpm = hrm_demo_is_paired() ? hrm_demo_get_bpm() : 0;
 			uint32_t cad = bsc_demo_is_paired() ? bsc_demo_get_cadence() : 0;
+			/* ANT+ FE-C only, same as HRM/cadence above -- not
+			 * unified with BLE Cycling Power, matching this
+			 * function's existing pattern exactly. Reads 0 with the
+			 * default ANT_ENABLED=OFF build (ant_stubs.c's
+			 * fec_demo_is_paired() always reports unpaired then) --
+			 * real per-lap power/normalized-power numbers need
+			 * ANT_ENABLED=ON and a real ANT+ power meter paired. */
+			uint16_t power_w = fec_demo_is_paired() ? fec_demo_get_power_w() : 0;
 
-			ride_recorder_add_sample(lat_sc, lon_sc, alt_cm, bpm, (uint8_t)cad, 0, ts,
-						  dist_delta, climb_delta, descent_delta);
+			ride_recorder_add_sample(lat_sc, lon_sc, alt_cm, bpm, (uint8_t)cad, power_w,
+						  ts, dist_delta, climb_delta, descent_delta);
 
 			s_prev_lat = lat;
 			s_prev_lon = lon;

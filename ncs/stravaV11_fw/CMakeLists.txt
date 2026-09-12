@@ -156,6 +156,7 @@ target_sources(app PRIVATE
   lib/source/vue/Menuable.cpp
   lib/source/vue/Screenutils.cpp
   lib/source/vue/VueDebug.cpp
+  lib/source/vue/VueLap.cpp
   lib/source/vue/VueGPS.cpp
   lib/source/vue/VueFEC.cpp
   lib/source/vue/VuePRC.cpp
@@ -168,6 +169,7 @@ target_sources(app PRIVATE
   lib/source/routes/Parcours.cpp
   src/menu_content.cpp
   src/debug_screen_data.cpp
+  src/lap_screen_data.cpp
   lib/source/g_structs.c
   lib/source/model/PowerZone.cpp
   lib/source/model/RRZone.cpp

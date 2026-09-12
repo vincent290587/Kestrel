@@ -15,6 +15,19 @@ extern "C" {
  * gfx_demo()'s own one-shot boot splash. */
 void vue_demo_start(void);
 
+/* Manual console-only screen switch (2026-09-12, "VUE LAP"/"VUE DEBUG" in
+ * cmd_console.c) -- no buttons are wired to Vue's own eButtonsEvent input
+ * yet, so this is the only way to change the live screen right now.
+ * `mode` is an eVueGlobalScreenModes value (Vue.h) -- passed as a plain
+ * int so this header stays C-includable from cmd_console.c without
+ * pulling in the whole C++ Vue class hierarchy. The two macros below
+ * must stay in sync with Vue.h's own enum values (vue_demo.cpp's
+ * VUE_DEMO_STATIC_ASSERT catches a mismatch at compile time). */
+#define VUE_MODE_DEBUG 3
+#define VUE_MODE_LAP   4
+
+void vue_demo_set_mode(int mode);
+
 #ifdef __cplusplus
 }
 #endif

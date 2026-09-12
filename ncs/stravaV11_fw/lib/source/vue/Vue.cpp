@@ -115,6 +115,16 @@ void Vue::tasks(eButtonsEvent event) {
 		this->propagateEvent(event);
 		break;
 	}
+	case eVueGlobalScreenLAP:
+	{
+		/* Manual-lap feature (2026-09-12): no button interaction of its
+		 * own yet (this screen is only reachable via the "VUE LAP"
+		 * console command, see vue_demo.cpp) -- still propagates so the
+		 * shared notification-banner state machine (NotifiableDevice)
+		 * keeps working the same as every other screen. */
+		this->propagateEvent(event);
+		break;
+	}
 	default:
 		break;
 	}
@@ -159,6 +169,9 @@ void Vue::refresh(void) {
 			break;
 		case eVueGlobalScreenDEBUG:
 			this->displayDebug();
+			break;
+		case eVueGlobalScreenLAP:
+			this->displayLap();
 			break;
 
 		default:

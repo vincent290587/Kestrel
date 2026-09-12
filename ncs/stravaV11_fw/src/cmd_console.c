@@ -62,6 +62,7 @@
 #include "lezyne_ble.h"
 #include "lezyne_handler.h"
 #include "gps_sim_demo.h"
+#include "vue_demo.h"
 #include "cmd_console.h"
 
 LOG_MODULE_REGISTER(cmd_console, LOG_LEVEL_INF);
@@ -154,6 +155,12 @@ static void handle_command(const char *cmd)
 		}
 	} else if (strcmp(cmd, "RIDE STOP") == 0) {
 		ride_recorder_stop();
+	} else if (strcmp(cmd, "LAP") == 0) {
+		ride_recorder_lap();
+	} else if (strcmp(cmd, "VUE LAP") == 0) {
+		vue_demo_set_mode(VUE_MODE_LAP);
+	} else if (strcmp(cmd, "VUE DEBUG") == 0) {
+		vue_demo_set_mode(VUE_MODE_DEBUG);
 	} else if (strcmp(cmd, "LEZ STATUS") == 0) {
 		lezyne_ble_log_status();
 		lezyne_handler_log_status();
@@ -171,7 +178,8 @@ static void handle_command(const char *cmd)
 #endif
 			"\"BATT\", \"BLE STATUS\", \"CPS STATUS\", \"SETTINGS DUMP\", "
 			"\"SETTINGS RESET\", \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\", "
-			"\"RIDE START\", \"RIDE STOP\", \"LEZ STATUS\", \"MSC MOUNT\", or \"MSC UNMOUNT\")",
+			"\"RIDE START\", \"RIDE STOP\", \"LAP\", \"VUE LAP\", \"VUE DEBUG\", "
+			"\"LEZ STATUS\", \"MSC MOUNT\", or \"MSC UNMOUNT\")",
 			cmd);
 	}
 }

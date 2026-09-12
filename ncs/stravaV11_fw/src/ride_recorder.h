@@ -82,6 +82,35 @@ bool ride_recorder_get_live_totals(float *distance_m, float *climb_m);
  * convention as poll_demo.c/sensor_screen_demo.c. */
 void ride_recorder_start_tick(void);
 
+/* Manual-lap feature (2026-09-12): closes the currently open lap and
+ * starts a new one. The closed lap's own average power / Normalized
+ * Power / elapsed time get written as their own FIT LAP message
+ * straight into the ride's QSPI record stream (durable immediately,
+ * independent of FRAM's own small recent_laps display window -- see
+ * ride_recorder.c's own comment on why this scales to far more laps
+ * than FRAM could hold). No-op, logged, if no ride is active. */
+bool ride_recorder_lap(void);
+
+/* Live totals for whatever lap is currently open (or the most recently
+ * closed ride's last lap, if none is active -- same convention as
+ * ride_recorder_get_live_totals()). Returns false, outputs untouched,
+ * if nothing to report. */
+bool ride_recorder_get_current_lap(uint32_t *elapsed_s, uint16_t *avg_power_w,
+				    uint16_t *normalized_power_w, uint32_t *lap_number);
+
+struct ride_recorder_lap_info {
+	uint32_t lap_number; /* 1-based */
+	uint32_t elapsed_s;
+	uint16_t avg_power_w;
+	uint16_t normalized_power_w;
+};
+
+/* Fills `out[0..return value)` with the most-recently-closed laps first,
+ * up to `max_count` (capped internally at the last RIDE_LAP_DISPLAY_COUNT
+ * laps FRAM actually remembers -- see ride_recorder.c). Returns 0 if no
+ * lap has ever closed yet. */
+uint8_t ride_recorder_get_recent_laps(struct ride_recorder_lap_info *out, uint8_t max_count);
+
 #ifdef __cplusplus
 }
 #endif

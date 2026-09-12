@@ -98,3 +98,14 @@ void vue_demo_start(void)
 {
 	k_work_schedule(&vue_demo_work, K_MSEC(VUE_DEMO_REFRESH_MS));
 }
+
+/* vue_demo.h's own VUE_MODE_DEBUG/VUE_MODE_LAP plain-int macros must
+ * match Vue.h's real enum values exactly -- caught here at compile time
+ * rather than silently switching to the wrong screen. */
+static_assert(VUE_MODE_DEBUG == (int)eVueGlobalScreenDEBUG, "VUE_MODE_DEBUG out of sync with Vue.h");
+static_assert(VUE_MODE_LAP == (int)eVueGlobalScreenLAP, "VUE_MODE_LAP out of sync with Vue.h");
+
+void vue_demo_set_mode(int mode)
+{
+	vue.setCurrentMode((eVueGlobalScreenModes)mode);
+}

@@ -37,6 +37,7 @@
 #include <vue/VueFEC.h>
 #include <vue/VuePRC.h>
 #include <vue/VueDebug.h>
+#include <vue/VueLap.h>
 #include <vue/Menuable.h>
 #include <vue/button.h>
 #include <vue/ZephyrGFX.h>
@@ -46,9 +47,15 @@ typedef enum {
 	eVueGlobalScreenFEC,
 	eVueGlobalScreenPRC,
 	eVueGlobalScreenDEBUG,
+	/* Manual-lap feature (2026-09-12): appended at the end so the
+	 * existing four values keep their numeric meaning -- vue_demo.h's
+	 * VUE_MODE_DEBUG/VUE_MODE_LAP plain-int macros (cmd_console.c's
+	 * "VUE LAP"/"VUE DEBUG" commands) must stay in sync with this
+	 * ordering. */
+	eVueGlobalScreenLAP,
 } eVueGlobalScreenModes;
 
-class Vue: public VueCRS, public VueFEC, public VuePRC, public VueDebug, public NotifiableDevice, public Menuable, public ZephyrGFX {
+class Vue: public VueCRS, public VueFEC, public VuePRC, public VueDebug, public VueLap, public NotifiableDevice, public Menuable, public ZephyrGFX {
 public:
 	Vue();
 

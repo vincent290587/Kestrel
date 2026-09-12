@@ -5452,11 +5452,12 @@ typedef struct PACKED
 // lap message
 
 // TODO custom that
-/* Bumped 5->7 to add avg_altitude/min_altitude -- see the matching
- * FIT_SESSION_USER_MSG_FIELDS_NB comment above. */
-#define FIT_LAP_USER_MSG_FIELDS_NB      7
+/* Bumped 5->7 to add avg_altitude/min_altitude, then 7->9 to add
+ * avg_power/normalized_power for the manual-lap feature -- see the
+ * matching FIT_SESSION_USER_MSG_FIELDS_NB comment above. */
+#define FIT_LAP_USER_MSG_FIELDS_NB      9
 
-#define FIT_LAP_MESG_SIZE                                                       18
+#define FIT_LAP_MESG_SIZE                                                       22
 #define FIT_LAP_MESG_DEF_SIZE                                                   ((FIT_LAP_USER_MSG_FIELDS_NB*FIT_FIELD_DEF_SIZE) + 5)
 #define FIT_LAP_MESG_TIME_IN_HR_ZONE_COUNT                                      1
 #define FIT_LAP_MESG_TIME_IN_SPEED_ZONE_COUNT                                   1
@@ -5499,12 +5500,12 @@ typedef struct PACKED
 //   FIT_UINT16 total_fat_calories; // 1 * kcal + 0, If New Leaf
 //   FIT_UINT16 avg_speed; // 1000 * m/s + 0,
 //   FIT_UINT16 max_speed; // 1000 * m/s + 0,
-//   FIT_UINT16 avg_power; // 1 * watts + 0, total_power / total_timer_time if non_zero_avg_power otherwise total_power / total_elapsed_time
+   FIT_UINT16 avg_power; // 1 * watts + 0, total_power / total_timer_time if non_zero_avg_power otherwise total_power / total_elapsed_time
 //   FIT_UINT16 max_power; // 1 * watts + 0,
 //   FIT_UINT16 total_ascent; // 1 * m + 0,
 //   FIT_UINT16 total_descent; // 1 * m + 0,
 //   FIT_UINT16 num_lengths; // 1 * lengths + 0, # of lengths of swim pool
-//   FIT_UINT16 normalized_power; // 1 * watts + 0,
+   FIT_UINT16 normalized_power; // 1 * watts + 0,
 //   FIT_LEFT_RIGHT_BALANCE_100 left_right_balance; //
 //   FIT_UINT16 first_length_index; //
 //   FIT_UINT16 avg_stroke_distance; // 100 * m + 0,
