@@ -51,6 +51,31 @@
 
 LOG_MODULE_REGISTER(ride_recorder, LOG_LEVEL_INF);
 
+/* Real bug, found 2026-09-11 via a real GPS Ally download crash: every
+ * FIT_DATE_TIME field this file writes (file_id.time_created, every
+ * event/lap/session/activity timestamp/start_time, and record.timestamp)
+ * used to get a raw Unix timestamp (seconds since 1970) assigned
+ * directly -- but fit_example.h's own FIT_DATE_TIME typedef comment says
+ * exactly what the real FIT spec requires: "seconds since UTC 00:00 Dec
+ * 31 1989" (the FIT epoch), not Unix time. Confirmed independently with
+ * Python's `fitparse` against a real exported file pulled off the SD
+ * card over USB MSC: every timestamp decoded as 2046, not 2026 -- a ride
+ * dated 20 years in the future is exactly the kind of value GPS Ally's
+ * own Ride.fromFitFile(...).save(...) most likely chokes on. Every OTHER
+ * use of a timestamp in this file (the exported filename, the FRAM
+ * st->start_timestamp/last_timestamp fields, the Lezyne wire protocol's
+ * file_id) is deliberately still plain Unix time -- only values actually
+ * written into a FIT_DATE_TIME field need this conversion. Duration
+ * fields (total_elapsed_time = end - start) are unaffected either way,
+ * since subtracting two timestamps in the same epoch cancels the
+ * constant offset out -- not converted here, and correctly so. */
+#define FIT_EPOCH_OFFSET_FROM_UNIX 631065600U /* 1989-12-31T00:00:00Z minus 1970-01-01T00:00:00Z, in seconds */
+
+static inline FIT_DATE_TIME fit_timestamp_from_unix(uint32_t unix_timestamp)
+{
+	return (FIT_DATE_TIME)(unix_timestamp - FIT_EPOCH_OFFSET_FROM_UNIX);
+}
+
 /* Same physical/protocol address every other QSPI XIP user in this port
  * (main.c's qspi_xip_demo()) uses -- Nordic's NRF_MEMORY_EXTFLASH_BASE,
  * not discoverable from devicetree. See that file's own comment for the
@@ -394,7 +419,7 @@ static bool ride_export_slot_to_sd(uint8_t slot_index, sRideSlotState *st)
 	FIT_FILE_ID_MESG file_id;
 
 	Fit_InitMesg(fit_mesg_defs[FIT_MESG_FILE_ID], &file_id);
-	file_id.time_created = st->start_timestamp;
+	file_id.time_created = fit_timestamp_from_unix(st->start_timestamp);
 	file_id.type = FIT_FILE_ACTIVITY;
 	file_id.manufacturer = FIT_MANUFACTURER_LEZYNE;
 	strncpy(file_id.product_name, "stravaV11", sizeof(file_id.product_name));
@@ -412,7 +437,7 @@ static bool ride_export_slot_to_sd(uint8_t slot_index, sRideSlotState *st)
 	FIT_EVENT_MESG event_msg;
 
 	Fit_InitMesg(fit_mesg_defs[FIT_MESG_EVENT], &event_msg);
-	event_msg.timestamp = st->start_timestamp;
+	event_msg.timestamp = fit_timestamp_from_unix(st->start_timestamp);
 	event_msg.event_type = FIT_EVENT_TYPE_START;
 	ok = ok && ride_write_mesg(&file, FIT_MESG_EVENT, &event_msg, FIT_EVENT_MESG_SIZE);
 
@@ -447,8 +472,8 @@ static bool ride_export_slot_to_sd(uint8_t slot_index, sRideSlotState *st)
 	FIT_LAP_MESG lap_msg;
 
 	Fit_InitMesg(fit_mesg_defs[FIT_MESG_LAP], &lap_msg);
-	lap_msg.timestamp = st->last_timestamp;
-	lap_msg.start_time = st->start_timestamp;
+	lap_msg.timestamp = fit_timestamp_from_unix(st->last_timestamp);
+	lap_msg.start_time = fit_timestamp_from_unix(st->start_timestamp);
 	lap_msg.total_elapsed_time = (st->last_timestamp - st->start_timestamp) * 1000;
 	lap_msg.event = FIT_EVENT_LAP;
 	lap_msg.sport = FIT_SPORT_CYCLING;
@@ -456,7 +481,7 @@ static bool ride_export_slot_to_sd(uint8_t slot_index, sRideSlotState *st)
 
 	/* event: stop */
 	Fit_InitMesg(fit_mesg_defs[FIT_MESG_EVENT], &event_msg);
-	event_msg.timestamp = st->last_timestamp;
+	event_msg.timestamp = fit_timestamp_from_unix(st->last_timestamp);
 	event_msg.event_type = FIT_EVENT_TYPE_STOP_ALL;
 	ok = ok && ride_write_mesg(&file, FIT_MESG_EVENT, &event_msg, FIT_EVENT_MESG_SIZE);
 
@@ -464,8 +489,8 @@ static bool ride_export_slot_to_sd(uint8_t slot_index, sRideSlotState *st)
 	FIT_SESSION_MESG session_msg;
 
 	Fit_InitMesg(fit_mesg_defs[FIT_MESG_SESSION], &session_msg);
-	session_msg.timestamp = st->last_timestamp;
-	session_msg.start_time = st->start_timestamp;
+	session_msg.timestamp = fit_timestamp_from_unix(st->last_timestamp);
+	session_msg.start_time = fit_timestamp_from_unix(st->start_timestamp);
 	session_msg.total_elapsed_time = (st->last_timestamp - st->start_timestamp) * 1000;
 	session_msg.sport = FIT_SPORT_CYCLING;
 	session_msg.sub_sport = FIT_SUB_SPORT_MOUNTAIN;
@@ -475,7 +500,7 @@ static bool ride_export_slot_to_sd(uint8_t slot_index, sRideSlotState *st)
 	FIT_ACTIVITY_MESG act_msg;
 
 	Fit_InitMesg(fit_mesg_defs[FIT_MESG_ACTIVITY], &act_msg);
-	act_msg.timestamp = st->last_timestamp;
+	act_msg.timestamp = fit_timestamp_from_unix(st->last_timestamp);
 	act_msg.type = FIT_ACTIVITY_MANUAL;
 	act_msg.event_type = FIT_EVENT_TYPE_STOP;
 	act_msg.event = FIT_EVENT_ACTIVITY;
@@ -600,7 +625,7 @@ void ride_recorder_add_sample(int32_t lat_semicircles, int32_t lon_semicircles, 
 	FIT_RECORD_MESG rec;
 
 	Fit_InitMesg(fit_mesg_defs[FIT_MESG_RECORD], &rec);
-	rec.timestamp = unix_timestamp;
+	rec.timestamp = fit_timestamp_from_unix(unix_timestamp);
 	rec.position_lat = lat_semicircles;
 	rec.position_long = lon_semicircles;
 	rec.altitude = (FIT_UINT16)(2500 + alt_cm / 20); /* 5m/count + 500m offset, see fit_encode.cpp's own comment */

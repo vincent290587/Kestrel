@@ -34,4 +34,20 @@ void lezyne_handler_on_rx(const uint8_t *data, uint16_t length);
 
 void lezyne_handler_log_status(void);
 
+/* Debug-only, unrelated to the L-protocol itself: hold /SD: mounted (or
+ * release it) on demand, from cmd_console.c's "MSC MOUNT"/"MSC UNMOUNT".
+ * Reuses this file's own dedicated FatFS thread purely as
+ * already-provisioned infrastructure (see LEZ_CMD_STACK_SIZE's comment)
+ * -- fs_mount()/fs_unmount() are real FatFS/SD work and must not run on
+ * cmd_console.c's own caller thread (the system workqueue). USB MSC's
+ * SCSI layer (usbd_msc_scsi.c's update_disk_info()) only reports real
+ * capacity to the host while disk_access_status() is OK, which this
+ * port's usual mount-do-one-thing-unmount convention leaves true only
+ * for the instant of each transient operation -- not while the host is
+ * idly polling. Mounting here and deliberately NOT unmounting until
+ * asked keeps the card visible to a host doing USB MSC for as long as
+ * needed. */
+void lezyne_handler_msc_mount(void);
+void lezyne_handler_msc_unmount(void);
+
 #endif /* LEZYNE_HANDLER_H_ */

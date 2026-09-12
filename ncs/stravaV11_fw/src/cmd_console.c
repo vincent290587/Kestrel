@@ -157,6 +157,10 @@ static void handle_command(const char *cmd)
 	} else if (strcmp(cmd, "LEZ STATUS") == 0) {
 		lezyne_ble_log_status();
 		lezyne_handler_log_status();
+	} else if (strcmp(cmd, "MSC MOUNT") == 0) {
+		lezyne_handler_msc_mount();
+	} else if (strcmp(cmd, "MSC UNMOUNT") == 0) {
+		lezyne_handler_msc_unmount();
 	} else {
 		LOG_WRN("cmd_console: unknown command \"%s\" (try "
 			"\"STRESS START\", \"STRESS STOP\", \"SIM START\", \"SIM STOP\", \"MAP START\", \"MAP STOP\", "
@@ -167,7 +171,7 @@ static void handle_command(const char *cmd)
 #endif
 			"\"BATT\", \"BLE STATUS\", \"CPS STATUS\", \"SETTINGS DUMP\", "
 			"\"SETTINGS RESET\", \"SETTINGS SET FTP/WEIGHT/HRM/BSC/FEC/GLA <n>\", "
-			"\"RIDE START\", \"RIDE STOP\", or \"LEZ STATUS\")",
+			"\"RIDE START\", \"RIDE STOP\", \"LEZ STATUS\", \"MSC MOUNT\", or \"MSC UNMOUNT\")",
 			cmd);
 	}
 }

@@ -33,6 +33,11 @@ LOG_MODULE_REGISTER(lezyne_handler, LOG_LEVEL_WRN);
 #define LEZ_QUEUE_ITEM_MAX 240
 #define LEZ_QUEUE_DEPTH 32
 
+/* Reserved, not real L-protocol opcodes -- route cmd_console.c's debug
+ * "MSC MOUNT"/"MSC UNMOUNT" onto this file's own dedicated FatFS thread. */
+#define LEZ_MSC_MOUNT_CMD   0xFE
+#define LEZ_MSC_UNMOUNT_CMD 0xFD
+
 struct lez_queue_item {
 	uint8_t data[LEZ_QUEUE_ITEM_MAX];
 	uint16_t len;
@@ -367,6 +372,33 @@ static void handle_file_delete(const uint8_t *data)
 	LOG_INF("lezyne_handler: deleted %s", path);
 }
 
+/* Debug-only MSC mount/unmount -- see lezyne_handler.h's own comment.
+ * Deliberately a separate static mount instance from with_sd_mounted()'s
+ * (own struct per real fs_unmount() dnode-identity requirement, same
+ * reason m_fit_mp is its own instance below). */
+static FATFS m_msc_fat_fs;
+static struct fs_mount_t m_msc_mp = {
+	.type = FS_FATFS,
+	.fs_data = &m_msc_fat_fs,
+	.mnt_point = "/SD:",
+};
+static bool m_msc_mounted;
+
+static void msc_mount(void)
+{
+	if (!m_msc_mounted && fs_mount(&m_msc_mp) == 0) {
+		m_msc_mounted = true;
+	}
+}
+
+static void msc_unmount(void)
+{
+	if (m_msc_mounted) {
+		fs_unmount(&m_msc_mp);
+		m_msc_mounted = false;
+	}
+}
+
 static void fit_download_abort(void)
 {
 	if (m_fit_download_active) {
@@ -600,6 +632,14 @@ static void process_rx_command(const uint8_t *data, uint16_t length)
 		LOG_INF("lezyne_handler: cmd=%u descoped (segments/navigation), ignoring", cmd);
 		break;
 
+	case LEZ_MSC_MOUNT_CMD:
+		msc_mount();
+		break;
+
+	case LEZ_MSC_UNMOUNT_CMD:
+		msc_unmount();
+		break;
+
 	default:
 		LOG_INF("lezyne_handler: unhandled cmd=%u len=%u", cmd, length);
 		break;
@@ -684,6 +724,23 @@ void lezyne_handler_on_rx(const uint8_t *data, uint16_t length)
 	if (k_msgq_put(&lez_rx_msgq, &msg, K_NO_WAIT) != 0) {
 		LOG_WRN("lezyne_handler: command queue full, dropping cmd=%u", data[0]);
 	}
+}
+
+static void queue_msc_cmd(uint8_t cmd)
+{
+	struct lez_rx_msg msg = { .len = 1, .data = { cmd } };
+
+	k_msgq_put(&lez_rx_msgq, &msg, K_NO_WAIT);
+}
+
+void lezyne_handler_msc_mount(void)
+{
+	queue_msc_cmd(LEZ_MSC_MOUNT_CMD);
+}
+
+void lezyne_handler_msc_unmount(void)
+{
+	queue_msc_cmd(LEZ_MSC_UNMOUNT_CMD);
 }
 
 void lezyne_handler_log_status(void)
