@@ -382,7 +382,22 @@ static bool ride_export_slot_to_sd(uint8_t slot_index, sRideSlotState *st)
 {
 	char fname[32];
 
-	snprintf(fname, sizeof(fname), "/SD:/%08lX.FIT", (unsigned long)st->start_timestamp);
+	/* Real bug, found 2026-09-12 via a real GPS Ally file-list showing
+	 * 2046 (title only -- the downloaded file's own internal FIT fields,
+	 * fixed above, decoded correctly): the decompiled app's own
+	 * BleFitFile.parseFileName() treats the filename's hex value as FIT
+	 * epoch seconds and adds FIT_EPOCH_OFFSET_FROM_UNIX again to get a
+	 * display date ("new DateTime((fileId*1000) + 631065600000L)") --
+	 * i.e. a real Lezyne device names its files with the FIT epoch, not
+	 * Unix time. This port's filename (and hence the Lezyne wire
+	 * protocol's file_id, which is just this same hex value echoed back
+	 * by lezyne_handler.c) was using raw Unix time, double-applying the
+	 * offset once the app added its own. FRAM's own start_timestamp
+	 * stays plain Unix (still used for total_elapsed_time and as the
+	 * input to fit_timestamp_from_unix() for the file's internal FIT
+	 * fields) -- only the on-disk filename needs this conversion. */
+	snprintf(fname, sizeof(fname), "/SD:/%08lX.FIT",
+		 (unsigned long)fit_timestamp_from_unix(st->start_timestamp));
 
 	/* SD is mounted transiently, per operation -- not held persistently
 	 * across boot (see sd_fat_demo()'s own fs_unmount() at the end of its

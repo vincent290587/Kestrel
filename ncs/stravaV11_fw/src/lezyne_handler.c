@@ -202,7 +202,8 @@ static uint32_t decode_uint32_le(const uint8_t *src)
 }
 
 /* True for an 8-char hex name followed by ".FIT"/".fit" -- ride_recorder.c's
- * own export naming (fname = "/SD:/%08lX.FIT", unix timestamp in hex). */
+ * own export naming (fname = "/SD:/%08lX.FIT", FIT-epoch timestamp in hex --
+ * see that file's own comment on why it's FIT epoch, not Unix). */
 static bool is_fit_filename(const char *name, uint32_t *out_id)
 {
 	size_t len = strlen(name);
