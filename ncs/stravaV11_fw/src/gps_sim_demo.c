@@ -8,6 +8,7 @@
 
 #include "Locator.h"
 #include "gps_sim_demo.h"
+#include "gps_uart_demo.h"
 
 LOG_MODULE_REGISTER(gps_sim_demo, LOG_LEVEL_INF);
 
@@ -165,6 +166,12 @@ void gps_sim_demo_start(void)
 	s_sec = GPS_SIM_START_SEC;
 	s_tick_count = 0;
 
+	/* Real and simulated GPS both feed the same shared Locator via
+	 * locator_encode_char() -- see gps_uart_demo.c's own comment for why
+	 * this is mutual exclusion, not a race between two independent
+	 * sources the way ANT+/BLE power/HRM/cadence work. */
+	gps_uart_demo_pause();
+
 	LOG_INF("gps_sim: started (start lat=%d.%04d lon=%d.%04d, %d km/h heading %d deg)",
 		(int)GPS_SIM_START_LAT, (int)(fabsf(GPS_SIM_START_LAT - (int)GPS_SIM_START_LAT) * 10000),
 		(int)GPS_SIM_START_LON, (int)(fabsf(GPS_SIM_START_LON - (int)GPS_SIM_START_LON) * 10000),
@@ -177,5 +184,6 @@ void gps_sim_demo_stop(void)
 {
 	s_running = false;
 	k_work_cancel_delayable(&gps_sim_tick_work);
+	gps_uart_demo_resume();
 	LOG_INF("gps_sim: stopped after %u ticks", s_tick_count);
 }

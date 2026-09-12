@@ -203,6 +203,7 @@ target_sources(app PRIVATE
   src/lezyne_ble.c
   src/lezyne_handler.c
   src/gps_sim_demo.c
+  src/gps_uart_demo.c
 )
 
 if(STRAVA_SEGMENTS_ENABLED)

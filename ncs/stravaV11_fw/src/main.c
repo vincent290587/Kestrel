@@ -26,7 +26,6 @@
 #if defined(CONFIG_NORDIC_QSPI_NOR)
 #include <zephyr/drivers/flash/nrf_qspi_nor.h>
 #endif
-#include <zephyr/drivers/uart.h>
 #include <zephyr/storage/disk_access.h>
 #include <zephyr/sys/printk.h>
 #if defined(CONFIG_FAT_FILESYSTEM_ELM)
@@ -45,8 +44,8 @@
 #endif
 #include "gfx_demo.h"
 #include "gps_demo.h"
+#include "gps_uart_demo.h"
 #include "map_demo.h"
-#include "Locator.h"
 #include "sensor_screen_demo.h"
 #include "vue_demo.h"
 #include "task_demo.h"
@@ -533,124 +532,12 @@ static void storage_demo(void)
 	}
 }
 
-#if DT_NODE_HAS_PROP(DT_PATH(zephyr_user), gps_reset_gpios)
-/* GPS_R/GPS_S/FIX_PIN (custom_board_v3.h) -- only defined on the real PCB's
- * board files (stravav11_nrf52840.dts), not the DK, since the DK has no
- * counterpart pins for them. GPS_R/GPS_S are active-low (TDD/Simulator.cpp
- * only emits NMEA data once both read high), so "released" (module out of
- * reset/standby, its normal running state) means driving both to their
- * GPIO_DT_SPEC-relative INACTIVE level -- physically high. Previously left
- * floating, which is the likely reason the GPS UART received unexplained
- * bytes on every boot (Phase 11): nothing ever held the module in a known
- * state either way. FIX_PIN is active-high, GPS-to-MCU. */
-static const struct gpio_dt_spec gps_reset =
-	GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), gps_reset_gpios);
-static const struct gpio_dt_spec gps_standby =
-	GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), gps_standby_gpios);
-static const struct gpio_dt_spec gps_fix =
-	GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), gps_fix_gpios);
-
-static void gps_pins_release(void)
-{
-	if (!gpio_is_ready_dt(&gps_reset) || !gpio_is_ready_dt(&gps_standby) ||
-	    !gpio_is_ready_dt(&gps_fix)) {
-		printk("gps: reset/standby/fix GPIO device not ready\n");
-		return;
-	}
-
-	gpio_pin_configure_dt(&gps_reset, GPIO_OUTPUT_INACTIVE);
-	gpio_pin_configure_dt(&gps_standby, GPIO_OUTPUT_INACTIVE);
-	gpio_pin_configure_dt(&gps_fix, GPIO_INPUT);
-
-	printk("gps: reset/standby released, fix pin reads %d\n", gpio_pin_get_dt(&gps_fix));
-}
-#else
-static void gps_pins_release(void)
-{
-}
-#endif
-
-static void uart_demo(void)
-{
-	/* Phase 6: GPS module UART (arduino_serial/uart1, see the overlay).
-	 * On the DK, no GPS module is attached -- this only proves TX
-	 * completes and RX doesn't hang, not that anything is received. On
-	 * the real PCB (Phase 11), gps_pins_release() below takes the module
-	 * out of reset/standby first, so RX bytes here are real. Every
-	 * received byte is also fed through locator_encode_char() (Phase 6's
-	 * TinyGPS++-based Locator, ported unmodified from stravaV11_app) --
-	 * see gps_demo_report() below for what it decoded. */
-	gps_pins_release();
-	gps_demo_init();
-
-	const struct device *uart = DEVICE_DT_GET(DT_NODELABEL(arduino_serial));
-
-	if (!device_is_ready(uart)) {
-		printk("arduino_serial: not ready\n");
-		return;
-	}
-
-	static const char msg[] = "$PMTK220,200*2C\r\n"; /* stravaV10's actual fix-interval cmd format */
-
-	for (size_t i = 0; i < sizeof(msg) - 1; i++) {
-		uart_poll_out(uart, msg[i]);
-	}
-	printk("arduino_serial: TX complete (%u bytes)\n", (unsigned)(sizeof(msg) - 1));
-
-	/* Capture and print the actual bytes, not just a count: on the real
-	 * PCB (Phase 11) something answers here even though nothing decodes
-	 * it yet. Polls for a wall-clock window, not a fixed iteration count
-	 * -- uart_poll_in() is non-blocking, and a fixed spin-count can
-	 * finish before a real 9600-baud stream (~73ms for a ~70-byte NMEA
-	 * sentence) has had time to arrive. */
-	static uint8_t rx_buf[256];
-	int rx_count = 0;
-	int64_t deadline = k_uptime_get() + 2000;
-
-	while (k_uptime_get() < deadline && rx_count < (int)sizeof(rx_buf)) {
-		unsigned char rx;
-
-		if (uart_poll_in(uart, &rx) == 0) {
-			rx_buf[rx_count++] = rx;
-			locator_encode_char((char)rx);
-		} else {
-			/* Only sleep when idle, not while bytes are actively
-			 * arriving: a tight 2s CPU-bound spin here starved the
-			 * deferred-log thread of any chance to run, which
-			 * dropped several other boot messages queued during
-			 * this window (RTT's own buffering is unrelated --
-			 * this is Zephyr's separate deferred-log message pool
-			 * filling up because nothing could drain it). */
-			k_msleep(1);
-		}
-	}
-
-	/* Build the whole dump into one buffer and printk() it once -- a
-	 * separate printk() per byte flooded the deferred log queue (each one
-	 * queued as its own message) badly enough that a first attempt at
-	 * this logged "258 messages dropped", losing everything else that
-	 * boot was trying to log at the same time. */
-	static char dump[4 * sizeof(rx_buf) + 1];
-	size_t dump_len = 0;
-
-	for (int i = 0; i < rx_count && dump_len + 5 < sizeof(dump); i++) {
-		if (rx_buf[i] >= 0x20 && rx_buf[i] < 0x7f) {
-			dump[dump_len++] = (char)rx_buf[i];
-		} else {
-			dump_len += snprintf(&dump[dump_len], 5, "\\x%02x", rx_buf[i]);
-		}
-	}
-	dump[dump_len] = '\0';
-
-	printk("arduino_serial: RX got %d bytes over 2s: \"%s\"\n", rx_count, dump);
-
-	gps_demo_report();
-
-	/* Give the deferred-log thread a moment to actually drain those two
-	 * lines before ant_demo_start() immediately queues a burst of its
-	 * own -- without this, one of them was the one getting dropped. */
-	k_msleep(5);
-}
+/* GPIO release, fix-interval TX, continuous NMEA-to-locator_encode_char()
+ * forwarding, and periodic gps_demo_report() logging all moved to
+ * gps_uart_demo.c (2026-09-12) -- this used to be a one-shot 2-second
+ * boot-time capture-and-dump here (uart_demo()), which proved the parser
+ * worked but never read the module again afterward. gps_uart_demo_start()
+ * (called from main() below) replaces it with a real continuous reader. */
 
 #if DT_HAS_CHOSEN(zephyr_display)
 static void display_demo(void)
@@ -711,8 +598,11 @@ int main(void)
 
 	display_demo();
 	gfx_demo();
-	uart_demo(); /* also calls gps_demo_init() -- Locator needs this regardless
-		      * of whether real NMEA bytes or gps_sim's injection feeds it. */
+	/* Locator needs gps_demo_init() regardless of whether real NMEA bytes
+	 * or gps_sim's injection ends up feeding it, so it's called directly
+	 * here rather than inside gps_uart_demo_start() itself. */
+	gps_demo_init();
+	gps_uart_demo_start();
 
 	/* GFX port Phase D (display arbitration): vue_demo_start() is what now
 	 * owns the live display after gfx_demo()'s one-shot boot splash above
